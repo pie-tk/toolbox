@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
 import { formatBytes } from "@/lib/utils";
+import { getAppInfo } from "@/lib/tauri";
 import {
   iconFromName,
   installTool,
@@ -48,6 +49,18 @@ function stageLabel(stage: string): string {
   }
 }
 
+/** 简易语义化版本比较：a >= b。 */
+function versionGte(a: string, b: string): boolean {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x !== y) return x > y;
+  }
+  return true;
+}
+
 export function MarketplacePage() {
   const registryUrl = useSettingsStore((s) => s.registryUrl);
   const records = useToolsStore((s) => s.records);
@@ -65,6 +78,11 @@ export function MarketplacePage() {
 
   const [installing, setInstalling] = useState<Record<string, InstallProgress>>({});
   const [uninstalling, setUninstalling] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState("0.0.0");
+
+  useEffect(() => {
+    getAppInfo().then((info) => info && setAppVersion(info.version));
+  }, []);
 
   // 进入页面：先展示缓存数据，同时后台刷新。
   useEffect(() => {
@@ -205,6 +223,8 @@ export function MarketplacePage() {
             const unmet = rec
               ? unmetRequires(Object.keys(m.requires ?? {}), capabilities)
               : [];
+            const hostOk =
+              !m.minAppVersion || versionGte(appVersion, m.minAppVersion);
 
             return (
               <div
@@ -290,11 +310,18 @@ export function MarketplacePage() {
                         )}
                       </Button>
                     </div>
-                  ) : (
+                  ) : hostOk ? (
                     <Button size="sm" onClick={() => handleInstall(tool)}>
                       <Download className="h-3.5 w-3.5" />
                       {status === "updatable" ? "更新" : "下载"}
                     </Button>
+                  ) : (
+                    <span
+                      className="text-xs text-muted-foreground/70"
+                      title={`当前宿主 v${appVersion} 不满足要求`}
+                    >
+                      需 ToolBox ≥ v{m.minAppVersion}
+                    </span>
                   )}
                 </div>
               </div>
