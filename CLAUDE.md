@@ -80,6 +80,15 @@ cargo test remote_registry_smoke -- --ignored   # 远程分发链路冒烟（真
 
 ## 已知敏感点
 
+- **simulator v4.0.0 是全功能原生移植插件**(参考 E:\tools\simulator,Python/PyQt5,只读):
+  全部逻辑在 `plugins/simulator/src/core/`(define/deviceModel/device/devices 族/gateway/
+  wsClient/discovery/crypto/mdns/apiServer/tasks/cloudMqtt/engine),UI 在 `components/`
+  (Tab:总览/网关/子设备/任务/业务/设置)。持久化走 fs 原语 JSON 快照(8 表等价,
+  `cache/simulator/{home_mac|local}.json`);对外 8089 API 由宿主 `commands/net.rs`
+  通用网络原语(WS/HTTP 入站 + UDP 组播 + 网卡枚举)承载,插件监听 `net-*` 事件。
+  发现协议 AES 是 \0 零填充 → 纯 TS 实现(core/crypto.ts,FIPS 向量自检),勿换 WebCrypto。
+  `smoke.mts` 为全量回归冒烟(esbuild+node 跑,见文件头注释)。
+  **联网链路(真实 HC/云 broker)需真机联调**;插件 minAppVersion=0.2.0(依赖 net 原语)。
 - `plugins/mipmap-studio/src/` 由原独立项目整体迁移，hooks/stores/components 的
   import 路径依赖 esbuild 的 `@ → 插件自身 src` 别名（见 build-plugins.mjs），勿改成宿主路径。
 - `timestamp` 与 `image-convert` 是无依赖纯前端工具，可作为新插件的模板。

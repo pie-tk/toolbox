@@ -1,7 +1,7 @@
 {
   "name": "toolbox",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit",
     "icon": "node scripts/gen-icon.mjs && tauri icon src-tauri/icons/app-icon.png",
     "build:plugins": "node scripts/build-plugins.mjs",
+    "lint:plugins": "node scripts/lint-plugins.mjs",
     "dist": "node scripts/dist.mjs"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
+    "mqtt": "^5.15.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sonner": "^1.7.1",

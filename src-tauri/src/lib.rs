@@ -17,6 +17,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             app.manage(commands::proc::ProcState::default());
+            app.manage(commands::net::NetState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -35,6 +36,15 @@ pub fn run() {
             commands::proc::proc_status,
             commands::proc::proc_read_log,
             commands::proc::proc_run_once,
+            commands::net::net_ws_server_start,
+            commands::net::net_ws_server_stop,
+            commands::net::net_ws_server_status,
+            commands::net::net_ws_send,
+            commands::net::net_ws_close_conn,
+            commands::net::net_udp_start,
+            commands::net::net_udp_send,
+            commands::net::net_udp_stop,
+            commands::net::net_local_ips,
             plugin::plugin_fetch_registry,
             plugin::plugin_install,
             plugin::plugin_repair_capabilities,

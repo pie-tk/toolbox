@@ -10,10 +10,12 @@ import { createHash } from "node:crypto";
 import { deflateRawSync } from "node:zlib";
 import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
   copyFileSync,
 } from "node:fs";
@@ -93,6 +95,21 @@ function makeZip(entries) {
   eocd.writeUInt32LE(centralBuf.length, 12);
   eocd.writeUInt32LE(offset, 16);
   return Buffer.concat([...chunks, centralBuf, eocd]);
+}
+
+/** 递归收集目录下全部文件 → [{name: 相对路径(正斜杠), data}] */
+function walkDir(root, prefix = "") {
+  const out = [];
+  for (const ent of readdirSync(root, { withFileTypes: true })) {
+    const full = path.join(root, ent.name);
+    const rel = prefix ? `${prefix}/${ent.name}` : ent.name;
+    if (ent.isDirectory()) {
+      out.push(...walkDir(full, rel));
+    } else if (ent.isFile()) {
+      out.push({ name: rel, data: readFileSync(full) });
+    }
+  }
+  return out;
 }
 
 function packageZip(id, version, entries) {
@@ -196,10 +213,17 @@ for (const id of pluginIds) {
     "--minify",
   ], { stdio: "inherit" });
 
+  // assets/（可选）：静态资源原样进包；运行期插件经 fs 原语从安装目录 rootDir/assets/ 读取。
+  const assetsDir = path.join(dir, "assets");
+  const assetEntries = existsSync(assetsDir) && statSync(assetsDir).isDirectory()
+    ? walkDir(assetsDir, "assets")
+    : [];
+
   const entry = packageZip(id, manifest.version, [
     { name: "manifest.json", data: readFileSync(path.join(dir, "manifest.json")) },
     { name: "module.js", data: readFileSync(path.join(stage, "module.js")) },
     { name: "style.css", data: readFileSync(path.join(stage, "style.css")) },
+    ...assetEntries,
   ]);
   registryTools.push(entry);
   const reqs = manifest.requires ? `（依赖: ${Object.keys(manifest.requires).join(", ")}）` : "";

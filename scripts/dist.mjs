@@ -64,11 +64,22 @@ const copy = (src, dest) => {
 
 copy(path.join(TARGET_DIR, "ToolBox.exe"), path.join(RELEASE_DIR, "ToolBox.exe"));
 
-const setupName = readdirSync(NSIS_DIR).find((f) => f.endsWith("-setup.exe"));
+// NSIS 目录可能积累多个历史版本的 *-setup.exe(目录序不确定),
+// 必须按当前版本号精确匹配,匹配不到再取 mtime 最新的一个。
+const version = JSON.parse(
+  readFileSync(path.join(ROOT, "src-tauri", "tauri.conf.json"), "utf8")
+).version;
+const setupCandidates = readdirSync(NSIS_DIR).filter((f) => f.endsWith("-setup.exe"));
+const setupName =
+  setupCandidates.find((f) => f === `ToolBox_${version}_x64-setup.exe`) ??
+  setupCandidates
+    .filter((f) => /^ToolBox_\d+\.\d+\.\d+_x64-setup\.exe$/.test(f))
+    .sort((a, b) => statSync(path.join(NSIS_DIR, b)).mtimeMs - statSync(path.join(NSIS_DIR, a)).mtimeMs)[0];
 if (!setupName) {
   console.error(`✗ 未在 ${NSIS_DIR} 找到 *-setup.exe`);
   process.exit(1);
 }
+console.log(`选定安装包: ${setupName}`);
 const setupSrc = path.join(NSIS_DIR, setupName);
 copy(setupSrc, path.join(RELEASE_DIR, "ToolBox-setup.exe"));
 
@@ -77,10 +88,6 @@ if (signed && existsSync(sigSrc)) {
   copyFileSync(sigSrc, path.join(RELEASE_DIR, "ToolBox-setup.exe.sig"));
   console.log("✔ release\\ToolBox-setup.exe.sig");
 }
-
-const version = JSON.parse(
-  readFileSync(path.join(ROOT, "src-tauri", "tauri.conf.json"), "utf8")
-).version;
 
 if (signed && existsSync(sigSrc)) {
   const signature = readFileSync(sigSrc, "utf8");

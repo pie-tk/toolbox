@@ -1,6 +1,6 @@
 [package]
 name = "toolbox"
-version = "0.1.2"
+version = "0.2.0"
 description = "ToolBox - a modular desktop toolbox"
 authors = ["ToolBox"]
 edition = "2021"
@@ -27,6 +27,13 @@ reqwest = { version = "0.12", features = ["blocking", "json"] }
 sha2 = "0.10"
 url = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# 网络原语（commands/net.rs）：入站 WS/HTTP + UDP，全部薄封装转发
+tokio = { version = "1", features = ["net", "io-util", "time", "sync", "macros"] }
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink", "async-await"] }
+if-addrs = "0.13"
+socket2 = "0.5"
+base64 = "0.22"
 
 [features]
 # Used for production builds where the frontend is bundled.
