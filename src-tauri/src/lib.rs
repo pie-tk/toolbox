@@ -1,0 +1,39 @@
+//! Tauri 2 wiring：宿主保持薄壳 —— 窗口/导航/插件分发（下载、校验、安装）
+//! 与通用文件原语。工具 UI 与业务逻辑全部在插件中，图像处理等重能力由
+//! 共享能力（wasm，如 image-core）在 WebView 内提供，宿主体积不随工具增长。
+
+mod commands;
+mod error;
+mod plugin;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            commands::system_cmd::app_info,
+            commands::host_fs::fs_list_dir,
+            commands::host_fs::fs_read_bytes,
+            commands::host_fs::fs_write_bytes,
+            commands::host_fs::fs_rename,
+            commands::host_fs::fs_exists,
+            commands::host_fs::fs_remove_file,
+            commands::host_fs::fs_remove_dir,
+            commands::host_fs::fs_create_dir_all,
+            commands::host_fs::fs_cache_dir,
+            plugin::plugin_fetch_registry,
+            plugin::plugin_install,
+            plugin::plugin_repair_capabilities,
+            plugin::plugin_uninstall,
+            plugin::plugin_list_installed,
+            plugin::plugin_read_file,
+            plugin::capability_list_installed,
+            plugin::capability_read_file,
+            plugin::capability_read_wasm,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

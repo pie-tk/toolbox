@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "timestamp",
+  "name": "时间戳转换",
+  "version": "1.0.0",
+  "description": "Unix 时间戳与日期时间互转，自动识别秒/毫秒/微秒，支持多种格式输出与相对时间",
+  "category": "time",
+  "keywords": ["timestamp", "unix", "时间", "时间戳", "日期", "date", "转换", "毫秒"],
+  "icon": "clock",
+  "layout": "card",
+  "entry": "module.js",
+  "style": "style.css",
+  "minAppVersion": "0.1.0"
+}

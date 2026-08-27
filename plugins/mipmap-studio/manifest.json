@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "mipmap-studio",
+  "name": "Mipmap Studio",
+  "version": "0.1.0",
+  "description": "Android 资源图片管理：扫描 res 目录、查看 mipmap/drawable 资源、批量重命名/删除/回迁、撤销",
+  "category": "image",
+  "keywords": ["mipmap", "drawable", "android", "res", "图片", "资源", "重命名"],
+  "icon": "images",
+  "layout": "fullscreen",
+  "entry": "module.js",
+  "style": "style.css",
+  "minAppVersion": "0.1.0",
+  "requires": { "image-core": "^1.0.0" }
+}

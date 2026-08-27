@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "json-formatter",
+  "name": "JSON 格式化",
+  "version": "1.0.0",
+  "description": "格式化、压缩与校验 JSON，错误行号定位，支持键排序与缩进切换",
+  "category": "developer",
+  "keywords": ["json", "format", "格式化", "压缩", "校验", "json viewer", "beautify"],
+  "icon": "braces",
+  "layout": "card",
+  "entry": "module.js",
+  "style": "style.css",
+  "minAppVersion": "0.1.0"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "kind": "capability",
+  "id": "image-core",
+  "version": "1.0.0",
+  "api": "1",
+  "name": "图像处理核心",
+  "description": "图片解码/探测/缩略图/格式转换（支持 PNG/JPEG/WebP/GIF 输入）",
+  "entry": "cap.wasm",
+  "bridge": "bridge.js"
+}

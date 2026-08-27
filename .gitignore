@@ -1,0 +1,13 @@
+node_modules
+dist
+src-tauri/target
+src-tauri/gen/schemas
+capabilities/*/target
+*.tsbuildinfo
+# 插件构建产物（由 npm run build:plugins 生成）
+public/registry.json
+public/plugins/
+# 发布产物
+release/
+# 更新签名私钥（务必自行备份，勿提交）
+.tauri/

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "image-convert",
+  "name": "图片格式转换",
+  "version": "1.0.0",
+  "description": "批量转换图片格式（PNG/JPEG/WebP）、调整质量与尺寸，与其他图工具共用 image-core 能力",
+  "category": "image",
+  "keywords": ["图片", "转换", "格式", "png", "jpeg", "webp", "压缩", "缩放"],
+  "icon": "image",
+  "layout": "card",
+  "entry": "module.js",
+  "style": "style.css",
+  "minAppVersion": "0.1.0",
+  "requires": { "image-core": "^1.0.0" }
+}
