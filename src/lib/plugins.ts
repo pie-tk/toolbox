@@ -129,10 +129,12 @@ export function listInstalled(): Promise<InstalledRecord[]> {
 
 /** ---- 模块加载：读文件 → blob URL → 动态 import（绕开跨源限制） ---- */
 
+// 缓存键带版本：插件更新安装后新版本自然失效，旧版本模块不会继续被喂给页面。
 const moduleCache = new Map<string, PluginModule>();
 
 export async function loadPluginModule(record: InstalledRecord): Promise<PluginModule> {
-  const cached = moduleCache.get(record.id);
+  const cacheKey = `${record.id}@${record.version}`;
+  const cached = moduleCache.get(cacheKey);
   if (cached) return cached;
   const js = await invoke<string>("plugin_read_file", {
     toolId: record.id,
@@ -144,7 +146,7 @@ export async function loadPluginModule(record: InstalledRecord): Promise<PluginM
     if (typeof mod.mount !== "function") {
       throw new Error(`插件 ${record.id} 缺少 mount 导出`);
     }
-    moduleCache.set(record.id, mod);
+    moduleCache.set(cacheKey, mod);
     return mod;
   } finally {
     URL.revokeObjectURL(url);
@@ -171,7 +173,10 @@ export async function loadPluginStyle(record: InstalledRecord): Promise<void> {
 
 /** 卸载后清理缓存的模块与样式。 */
 export function evictPlugin(id: string): void {
-  moduleCache.delete(id);
+  // 缓存键为 id@version，同时兼容历史裸 id 键
+  for (const key of [...moduleCache.keys()]) {
+    if (key === id || key.startsWith(`${id}@`)) moduleCache.delete(key);
+  }
   document.getElementById(`plugin-style-${id}`)?.remove();
 }
 
