@@ -112,7 +112,15 @@ function walkDir(root, prefix = "") {
   return out;
 }
 
+/** 打包防线：任何疑似原始源码/调试文件的条目直接终止构建（防止源码泄漏进分发 ZIP）。 */
+function assertNoSourceLeaks(id, entries) {
+  const banned = /\.(ts|tsx|mts|cts|map|rs|py)$/i;
+  const hit = entries.find((e) => banned.test(e.name) || e.name.startsWith("src/"));
+  if (hit) throw new Error(`${id}: 打包条目 ${hit.name} 疑似源码/调试文件，已阻止（防源码泄漏）`);
+}
+
 function packageZip(id, version, entries) {
+  assertNoSourceLeaks(id, entries);
   const zip = makeZip(entries);
   const zipName = `${id}-${version}.zip`;
   writeFileSync(path.join(OUT_DIR, zipName), zip);

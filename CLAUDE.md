@@ -96,3 +96,10 @@ cargo test remote_registry_smoke -- --ignored   # 远程分发链路冒烟（真
   离开页面不清空；换源时会自动清缓存。
 - `.gitignore` 覆盖：`node_modules`、`dist`、`src-tauri/target`、`capabilities/*/target`、
   `public/registry.json`、`public/plugins/`、`release/`、`.tauri/`——构建产物不入库。
+- **simulator 源码是私有的，不在本仓库**：真实源码在嵌套 git 仓库
+  `plugins/simulator/`（远程 = `pie-tk/toolbox-plugin-simulator`，PRIVATE），
+  已被 `.gitignore` 排除且历史已清理；本仓库对 simulator 只分发 registry 的
+  构建产物 ZIP。克隆本仓库后需 simulator 源码时：
+  `git clone https://github.com/pie-tk/toolbox-plugin-simulator plugins/simulator`
+  （需 pie-tk 授权）。`scripts/build-plugins.mjs` 的 `packageZip` 有
+  `assertNoSourceLeaks` 防线，源码/调试文件进包会直接构建失败。

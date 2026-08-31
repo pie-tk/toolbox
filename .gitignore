@@ -11,3 +11,6 @@ public/plugins/
 release/
 # 更新签名私钥（务必自行备份，勿提交）
 .tauri/
+# 私有插件源码（不入公开仓库；simulator 源码在私有仓 pie-tk/toolbox-plugin-simulator，
+# 以嵌套 git 仓库形式留在本目录供构建，分发走 registry 的构建产物 ZIP）
+/plugins/simulator/
