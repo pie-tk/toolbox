@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Binary, Braces, Clock, Hash, Home, Image, Images, Wrench } from "lucide-react";
+import { Binary, Braces, Clock, Hash, Home, Image, Images, Key, Wrench } from "lucide-react";
 import type { ComponentType } from "react";
 import type { ToolCategory, ToolMeta } from "@/types/tool";
 
@@ -72,6 +72,7 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
   hash: Hash,
   binary: Binary,
   home: Home,
+  key: Key,
 };
 
 export function iconFromName(name?: string): ComponentType<{ className?: string }> {

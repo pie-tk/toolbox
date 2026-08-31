@@ -3,6 +3,7 @@ import {
   Boxes,
   Check,
   Download,
+  Eraser,
   Loader2,
   Moon,
   RefreshCw,
@@ -51,6 +52,9 @@ function Section({ title, description, children }: {
 export function SettingsPage() {
   const registryUrl = useSettingsStore((s) => s.registryUrl);
   const setRegistryUrl = useSettingsStore((s) => s.setRegistryUrl);
+  const registryHistory = useSettingsStore((s) => s.registryHistory);
+  const removeRegistryHistory = useSettingsStore((s) => s.removeRegistryHistory);
+  const clearRegistryHistory = useSettingsStore((s) => s.clearRegistryHistory);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.set);
   const records = useToolsStore((s) => s.records);
@@ -182,6 +186,78 @@ export function SettingsPage() {
         <div className="text-xs text-muted-foreground">
           当前源：<span className="font-mono">{registryUrl}</span>
         </div>
+
+        {registryHistory.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-muted-foreground">
+                使用过的源（{registryHistory.length}）
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => clearRegistryHistory()}
+              >
+                <Eraser className="h-3.5 w-3.5" />
+                清空记录
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              {registryHistory.map((url) => {
+                const active = url === registryUrl;
+                return (
+                  <div
+                    key={url}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md border bg-background/50 px-3 py-1.5",
+                      active && "border-primary/50"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate font-mono text-xs",
+                        active ? "text-primary" : "text-muted-foreground"
+                      )}
+                      title={url}
+                    >
+                      {url}
+                    </span>
+                    {active && (
+                      <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">
+                        当前
+                      </span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      title="重新使用该地址"
+                      disabled={active}
+                      onClick={() => {
+                        setDraftUrl(url);
+                        setRegistryUrl(url);
+                        setSaved(true);
+                        window.setTimeout(() => setSaved(false), 1500);
+                      }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                      title="从记录中删除"
+                      onClick={() => removeRegistryHistory(url)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </Section>
 
       <Section
