@@ -134,7 +134,9 @@ export async function runTest(
         },
         body: JSON.stringify({
           model: cfg.model,
-          max_tokens: 16,
+          // 推理模型（glm-5.3）的思考也计入输出预算：给足余量避免
+          // reasoning 吃光 token 后 content 为空。
+          max_tokens: 512,
           messages: [{ role: "user", content: TEST_PROMPT }],
         }),
         signal,
@@ -149,7 +151,9 @@ export async function runTest(
         body: JSON.stringify({
           model: cfg.model,
           messages: [{ role: "user", content: TEST_PROMPT }],
-          max_tokens: 16,
+          // 推理模型（glm-5.3）的思考也计入输出预算：给足余量避免
+          // reasoning 吃光 token 后 content 为空。
+          max_tokens: 512,
         }),
         signal,
       });
@@ -202,12 +206,19 @@ export async function runTest(
         };
       }
     } else {
-      /* OpenAI: {choices: [{message: {content}}], usage:{prompt_tokens, ...}} */
+      /* OpenAI: {choices: [{message: {content, reasoning_content}}], usage:{...}}
+       * glm-5.3 是推理模型：max_tokens 太小时预算可能全部耗在 reasoning_content，
+       * content 为空字符串——这是"key 可用"的有效证据，不能判为失败。 */
       const choices = parsed.choices;
       if (Array.isArray(choices) && choices.length > 0) {
-        const msg = (choices[0] as { message?: { content?: unknown } }).message;
+        const msg = (choices[0] as {
+          message?: { content?: unknown; reasoning_content?: unknown };
+        }).message;
         const c = msg?.content;
-        reply = typeof c === "string" ? c.trim() : "";
+        if (typeof c === "string") reply = c.trim();
+        if (!reply && typeof msg?.reasoning_content === "string") {
+          reply = `（模型思考中，无正文输出）${msg.reasoning_content.trim().slice(0, 200)}`;
+        }
       }
       const u = parsed.usage as
         | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
@@ -222,7 +233,13 @@ export async function runTest(
     }
 
     if (!reply) {
-      return { ...base, ok: false, elapsedMs, error: "请求成功但未解析到回复文本" };
+      // 附上原始响应片段辅助排查（截断），避免只有一句模糊描述。
+      return {
+        ...base,
+        ok: false,
+        elapsedMs,
+        error: `请求成功但未解析到回复文本：${text.slice(0, 300)}`,
+      };
     }
     return { ...base, ok: true, elapsedMs, reply, usage };
   } catch (e) {
@@ -374,4 +391,150 @@ export function nextKeyName(keys: KeyEntry[]): string {
   let name = `key${n}`;
   while (names.has(name)) name = `key${++n}`;
   return name;
+}
+
+/* ---- 后台调度器：模块级单例，不随 React 组件卸载而停止 ----
+ * 宿主对 background 插件在应用启动时调用 startBackground()（见 manifest），
+ * 此后定时器存活于整个应用生命周期；页面 mount/unmount 只影响 UI。 */
+
+type SchedulerListener = () => void;
+const listeners = new Set<SchedulerListener>();
+
+/** UI 订阅调度器变化（定时重排 / 后台写入历史后刷新界面）。 */
+export function onSchedulerUpdate(cb: SchedulerListener): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+function emitUpdate(): void {
+  for (const cb of listeners) cb();
+}
+
+let timer: ReturnType<typeof setTimeout> | null = null;
+let nextFireAt: number | null = null;
+let backgroundStarted = false;
+/** toast 门控：UI 可见时不弹通知（用户正看着页面）。 */
+let toastGate: (() => boolean) | null = null;
+
+/** 宿主是否已启动本插件的后台模式（新宿主 = 应用冷启动即生效）。 */
+export function isBackgroundActive(): boolean {
+  return backgroundStarted;
+}
+
+/** main.tsx 在模块加载时注册（避免 core 反向依赖 UI 模块）。 */
+export function setToastGate(gate: () => boolean): void {
+  toastGate = gate;
+}
+
+/** 下次触发时间（epoch ms）；null = 未排定。 */
+export function getNextFireAt(): number | null {
+  return nextFireAt;
+}
+
+export function stopScheduler(): void {
+  if (timer !== null) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  nextFireAt = null;
+}
+
+/** 按当前持久化配置（重）排定时器。配置任何变化后调用；幂等。 */
+export function syncScheduler(): void {
+  stopScheduler();
+  const cfg = loadConfig();
+  if (!cfg.scheduleEnabled) return;
+  const times = cfg.scheduleTimes
+    .map((t) => parseTimeOfDay(t))
+    .filter((t): t is { h: number; m: number } => t !== null);
+  if (times.length === 0) return;
+
+  const arm = () => {
+    const target = nextOccurrence(times);
+    nextFireAt = target;
+    emitUpdate();
+    // 前台标签页 setTimeout 上限约 24.8 天，一天的延迟完全在安全范围内。
+    timer = setTimeout(() => {
+      void fireScheduled();
+    }, Math.max(target - Date.now(), 0));
+  };
+  arm();
+}
+
+/** 宿主 startBackground 入口（幂等）。 */
+export function markBackgroundStarted(): void {
+  backgroundStarted = true;
+  syncScheduler();
+}
+
+/** 宿主 stopBackground / 卸载入口。 */
+export function shutdownBackground(): void {
+  backgroundStarted = false;
+  stopScheduler();
+}
+
+/** 一轮测试：遍历已填写的 key（串行，避免并发触发服务端频控）。 */
+export async function runAllTests(
+  cfg: StoredConfig,
+  trigger: TestRecord["trigger"]
+): Promise<TestRecord[]> {
+  const entries = cfg.keys.filter((k) => k.key.trim());
+  const records: TestRecord[] = [];
+  for (const entry of entries) {
+    records.push(
+      await runTest(
+        { key: entry.key, keyName: entry.name, protocol: cfg.protocol, model: cfg.model },
+        trigger
+      )
+    );
+  }
+  return records;
+}
+
+function shortState(r: TestRecord): string {
+  if (r.ok) return "✓";
+  if (r.limited) return "⏳限额";
+  return `✗ ${(r.error ?? "失败").slice(0, 40)}`;
+}
+
+function notifyResult(records: TestRecord[]): void {
+  if (records.length === 0) return;
+  if (toastGate?.()) return; // 用户正停留在工具页面，界面已实时展示
+  const ok = records.filter((r) => r.ok).length;
+  const limited = records.filter((r) => r.limited).length;
+  const variant =
+    ok === records.length ? "success" : ok + limited === records.length ? "warning" : "error";
+  window.dispatchEvent(
+    new CustomEvent("toolbox-plugin-toast", {
+      detail: {
+        title: `GLM Key 定时测试：${ok}/${records.length} 可用${limited > 0 ? `（${limited} 限额中）` : ""}`,
+        description: records.map((r) => `${r.keyName || "未命名"} ${shortState(r)}`).join(" · "),
+        variant,
+      },
+    })
+  );
+}
+
+/** 定时触发：测试全部 key → 写历史 → 通知 → 重排下一次。 */
+async function fireScheduled(): Promise<void> {
+  try {
+    const cfg = loadConfig();
+    const records = await runAllTests(cfg, "scheduled");
+    if (records.length > 0) {
+      const fresh = loadConfig();
+      const next: StoredConfig = {
+        ...fresh,
+        history: [...records.slice().reverse(), ...fresh.history].slice(0, HISTORY_LIMIT),
+      };
+      saveConfig(next);
+      emitUpdate();
+      notifyResult(records);
+    }
+  } catch (e) {
+    console.warn("glm-key-test 定时测试异常：", e);
+  } finally {
+    syncScheduler();
+  }
 }

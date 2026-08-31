@@ -126,6 +126,27 @@ export default function App() {
     });
   }, [refreshTools]);
 
+  // 通用 toast 桥：插件（含后台运行中）经 CustomEvent 请求系统内通知。
+  // detail: { title, description?, variant?: "success" | "error" | "warning" | "info" }
+  useEffect(() => {
+    const onPluginToast = (e: Event) => {
+      const d = (e as CustomEvent<{ title: string; description?: string; variant?: string }>)
+        .detail;
+      if (!d?.title) return;
+      const fn =
+        d.variant === "success"
+          ? toast.success
+          : d.variant === "error"
+            ? toast.error
+            : d.variant === "warning"
+              ? toast.warning
+              : toast.info;
+      fn(d.title, { description: d.description });
+    };
+    window.addEventListener("toolbox-plugin-toast", onPluginToast);
+    return () => window.removeEventListener("toolbox-plugin-toast", onPluginToast);
+  }, []);
+
   // 拖拽分隔条调整侧边栏宽度。
   useEffect(() => {
     if (!dragging) return;

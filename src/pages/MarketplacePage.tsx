@@ -17,6 +17,7 @@ import { getAppInfo } from "@/lib/tauri";
 import {
   iconFromName,
   installTool,
+  stopBackgroundPlugin,
   uninstallTool,
   unmetRequires,
   type RegistryTool,
@@ -126,6 +127,8 @@ export function MarketplacePage() {
     const id = tool.manifest.id;
     setUninstalling(id);
     try {
+      // 先停后台活动，再卸载文件（防止已删除的工具继续定时请求）。
+      stopBackgroundPlugin(id);
       await uninstallTool(id);
       if (view.type === "tool" && view.toolId === id) {
         useAppStore.getState().openHome();

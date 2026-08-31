@@ -21,6 +21,8 @@ export interface PluginManifest {
   minAppVersion?: string;
   /** 依赖的共享能力：{ "<能力id>": "<版本范围>" }，安装时自动补齐。 */
   requires?: Record<string, string>;
+  /** 声明后台运行：应用启动时预加载模块并调用 startBackground()（定时器不随页面关闭而停止）。 */
+  background?: boolean;
 }
 
 export interface RegistryPackage {
@@ -60,6 +62,11 @@ export interface PluginContext {
 export interface PluginModule {
   mount(container: HTMLElement, ctx?: PluginContext): void;
   unmount?(): void;
+  /** background 插件：应用启动/安装后由宿主调用，可在此启动模块级定时器。
+   *  模块在宿主进程内常驻（moduleCache），页面切换只触发 mount/unmount，不影响后台活动。 */
+  startBackground?(): void;
+  /** 卸载前由宿主调用，插件应停止一切后台活动（定时器等）。 */
+  stopBackground?(): void;
 }
 
 /** ---- 图标注册表：manifest 中的图标名 → lucide 组件 ---- */
@@ -179,6 +186,34 @@ export function evictPlugin(id: string): void {
     if (key === id || key.startsWith(`${id}@`)) moduleCache.delete(key);
   }
   document.getElementById(`plugin-style-${id}`)?.remove();
+}
+
+/** ---- 后台插件：应用启动即预加载（不依赖用户打开页面） ---- */
+
+/** 启动所有声明 background 的已安装插件（幂等，重复调用无害）。 */
+export async function startBackgroundPlugins(records: InstalledRecord[]): Promise<void> {
+  for (const record of records) {
+    if (record.manifest.background !== true) continue;
+    try {
+      const mod = await loadPluginModule(record);
+      mod.startBackground?.();
+    } catch (e) {
+      console.warn(`后台插件 ${record.id} 启动失败：`, e);
+    }
+  }
+}
+
+/** 停止指定插件的后台活动（卸载时调用，防止已删除的工具继续定时请求）。 */
+export function stopBackgroundPlugin(id: string): void {
+  for (const [key, mod] of moduleCache) {
+    if (key === id || key.startsWith(`${id}@`)) {
+      try {
+        mod.stopBackground?.();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 /** ---- 共享能力加载：wasm 实例化一次，跨工具复用 ---- */

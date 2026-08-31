@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   listInstalled,
   manifestToMeta,
+  startBackgroundPlugins,
   type InstalledRecord,
 } from "@/lib/plugins";
 import { invoke } from "@tauri-apps/api/core";
@@ -43,6 +44,8 @@ export const useToolsStore = create<ToolsState>((set) => ({
         ...installed.map((r) => manifestToMeta(r.manifest)),
       ];
       set({ records, capabilities, metas, loading: false });
+      // 启动声明 background 的插件（应用启动与市场安装后都会走 refresh，幂等）。
+      void startBackgroundPlugins(Object.values(records));
     } catch (e) {
       set({ loading: false, error: String(e) });
     }

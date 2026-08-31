@@ -34,11 +34,17 @@ import {
   PROTOCOL_LABELS,
   type KeyEntry,
   type Protocol,
+  getNextFireAt,
+  isBackgroundActive,
+  markBackgroundStarted,
   nextKeyName,
   normalizeTime,
-  nextOccurrence,
+  onSchedulerUpdate,
   parseTimeOfDay,
   runTest,
+  setToastGate,
+  shutdownBackground,
+  syncScheduler,
   type StoredConfig,
   type TestRecord,
   loadConfig,
@@ -217,8 +223,8 @@ function GlmKeyTestTool() {
   const [last, setLast] = useState<TestRecord | null>(
     () => loadConfig().history[0] ?? null
   );
-  /** 下次定时触发时间（epoch ms）；null = 未启用。 */
-  const [nextAt, setNextAt] = useState<number | null>(null);
+  /** 下次定时触发时间（epoch ms）；null = 未启用。来自模块级调度器。 */
+  const [nextAt, setNextAt] = useState<number | null>(() => getNextFireAt());
 
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
@@ -227,22 +233,25 @@ function GlmKeyTestTool() {
   /** 定时回调需要最新版 cfg/testing，但 interval 只建一次 → 经 ref 转发。 */
 
   const update = useCallback((patch: Partial<StoredConfig>) => {
-    setCfg((prev) => {
-      const next = { ...prev, ...patch };
-      saveConfig(next);
-      return next;
-    });
+    const next = { ...cfgRef.current, ...patch };
+    cfgRef.current = next;
+    saveConfig(next);
+    setCfg(next);
+    // 配置变化 → 重排模块级定时器（后台与页面打开时都存活）。
+    syncScheduler();
   }, []);
 
   const pushHistory = useCallback((records: TestRecord[]) => {
-    setCfg((prev) => {
-      const next = { ...prev, history: [...records.slice().reverse(), ...prev.history].slice(0, 200) };
-      saveConfig(next);
-      return next;
-    });
+    const next = {
+      ...cfgRef.current,
+      history: [...records.slice().reverse(), ...cfgRef.current.history].slice(0, 200),
+    };
+    cfgRef.current = next;
+    saveConfig(next);
+    setCfg(next);
   }, []);
 
-  /** 执行一轮测试：遍历所有已填写 key（手动/定时共用）；并发时跳过。 */
+  /** 执行一轮测试：遍历所有已填写 key（手动触发；定时走模块级 fireScheduled）。 */
   const doTest = useCallback(
     async (trigger: TestRecord["trigger"]) => {
       if (testingRef.current) return;
@@ -283,34 +292,19 @@ function GlmKeyTestTool() {
     [pushHistory]
   );
 
-  /* 定时器：每天多个固定时刻触发，随 scheduleEnabled / scheduleTimes 重建。 */
+  /* 页面打开时确保模块级调度器按当前配置排定（老宿主首次打开工具的入口）；
+   * 并订阅调度器事件：后台触发写入历史 / 重排后同步界面。 */
   useEffect(() => {
-    if (!cfg.scheduleEnabled || cfg.scheduleTimes.length === 0) {
-      setNextAt(null);
-      return;
-    }
-    const times = cfg.scheduleTimes
-      .map((t) => parseTimeOfDay(t))
-      .filter((t): t is { h: number; m: number } => t !== null);
-    if (times.length === 0) {
-      setNextAt(null);
-      return;
-    }
-
-    let timer: ReturnType<typeof setTimeout>;
-    const arm = () => {
-      const target = nextOccurrence(times);
-      setNextAt(target);
-      // 前台标签页 setTimeout 上限约 24.8 天，一天的延迟完全在安全范围内。
-      timer = setTimeout(() => {
-        void doTest("scheduled");
-        arm();
-      }, Math.max(target - Date.now(), 0));
-    };
-
-    arm();
-    return () => clearTimeout(timer);
-  }, [cfg.scheduleEnabled, cfg.scheduleTimes, doTest]);
+    syncScheduler();
+    setNextAt(getNextFireAt());
+    const off = onSchedulerUpdate(() => {
+      const fresh = loadConfig();
+      cfgRef.current = fresh;
+      setCfg(fresh);
+      setNextAt(getNextFireAt());
+    });
+    return off;
+  }, []);
 
   /* unmount 前保存一次配置。 */
   useEffect(() => {
@@ -541,9 +535,13 @@ function GlmKeyTestTool() {
               <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {cfg.scheduleEnabled
                 ? cfg.scheduleTimes.length > 0
-                  ? `已开启：每天 ${cfg.scheduleTimes.join("、")} 自动测试，下次 ${countdown}（仅工具打开期间生效）`
+                  ? `已开启：每天 ${cfg.scheduleTimes.join("、")} 自动测试，下次 ${countdown}。${
+                      isBackgroundActive()
+                        ? "后台运行中：ToolBox 启动后即生效，无需停留在本页。"
+                        : "提示：当前宿主版本不支持冷启动后台；本次运行中打开过本工具后，切走页面也会继续触发。"
+                    }`
                   : "已开启，但未设置触发时间"
-                : "关闭中。开启后每天在设定时刻自动发送测试消息并记录结果。"}
+                : "关闭中。开启后每天在设定时刻自动发送测试消息并记录结果；结果会弹通知（页面打开时仅刷新历史）。"}
             </div>
           </div>
         </Section>
@@ -649,8 +647,12 @@ function GlmKeyTestTool() {
 
 let root: ReturnType<typeof createRoot> | null = null;
 let host: HTMLElement | null = null;
+/** 页面可见性（toast 门控：用户停留本页时不弹通知）。 */
+let pageVisible = false;
+setToastGate(() => pageVisible);
 
 export function mount(container: HTMLElement): void {
+  pageVisible = true;
   host = document.createElement("div");
   container.appendChild(host);
   root = createRoot(host);
@@ -658,8 +660,21 @@ export function mount(container: HTMLElement): void {
 }
 
 export function unmount(): void {
+  pageVisible = false;
   root?.unmount();
   root = null;
   host?.remove();
   host = null;
+  /* 注意：不停止模块级调度器——定时测试在后台继续（这正是本插件的核心能力）。
+   * 只有宿主 stopBackground（卸载）才停。 */
+}
+
+/** 宿主启动/安装后调用（manifest.background: true）。 */
+export function startBackground(): void {
+  markBackgroundStarted();
+}
+
+/** 宿主卸载前调用。 */
+export function stopBackground(): void {
+  shutdownBackground();
 }
