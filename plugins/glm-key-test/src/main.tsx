@@ -35,6 +35,7 @@ import {
   type KeyEntry,
   type Protocol,
   getNextFireAt,
+  getLastRound,
   isBackgroundActive,
   markBackgroundStarted,
   nextKeyName,
@@ -42,6 +43,7 @@ import {
   onSchedulerUpdate,
   parseTimeOfDay,
   runTest,
+  setLastRound as setLastRoundModule,
   setToastGate,
   shutdownBackground,
   syncScheduler,
@@ -168,49 +170,103 @@ function fmtTime(ms: number): string {
   )}:${p(d.getSeconds())}`;
 }
 
-function ResultView({ record }: { record: TestRecord }) {
-  if (record.ok) {
-    return (
-      <div className="space-y-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-emerald-500">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>Key 可用</span>
-          <span className="text-xs font-normal text-muted-foreground">
-            {record.model} · {PROTOCOL_LABELS[record.protocol]} · {record.elapsedMs} ms
-            {record.usage?.totalTokens !== undefined &&
-              ` · ${record.usage.totalTokens} tokens`}
-          </span>
-        </div>
-        <div className="whitespace-pre-wrap break-all text-sm">{record.reply}</div>
-      </div>
-    );
-  }
-  const limited = record.limited === true;
-  return (
-    <div
-      className={
-        limited
-          ? "space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400"
-          : "space-y-1 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+/** 一轮结果按状态分组：同状态同错误信息的 key 归为一行展示。 */
+interface ResultGroup {
+  status: "ok" | "limited" | "fail";
+  names: string[];
+  /** ok：可用（回复「…」）；失败：原始错误信息。 */
+  message: string;
+}
+
+function buildGroups(records: TestRecord[]): ResultGroup[] {
+  const map = new Map<string, ResultGroup>();
+  for (const r of records) {
+    const status: ResultGroup["status"] = r.ok ? "ok" : r.limited ? "limited" : "fail";
+    const key = r.ok ? "ok" : `${status}|${r.error ?? ""}`;
+    let g = map.get(key);
+    if (!g) {
+      let message: string;
+      if (r.ok) {
+        const reply = (r.reply ?? "").replace(/\s+/g, " ").slice(0, 24);
+        message = reply ? `可用 · 回复「${reply}」` : "可用";
+      } else {
+        message = r.error ?? "失败";
       }
-    >
-      <div className="flex items-center gap-2 font-medium">
-        {limited ? (
-          <Hourglass className="h-4 w-4 shrink-0" />
-        ) : (
-          <XCircle className="h-4 w-4 shrink-0" />
+      g = { status, names: [], message };
+      map.set(key, g);
+    }
+    if (r.keyName) g.names.push(r.keyName);
+  }
+  const order = { ok: 0, limited: 1, fail: 2 } as const;
+  return [...map.values()].sort((a, b) => order[a.status] - order[b.status]);
+}
+
+const GROUP_STYLE: Record<
+  ResultGroup["status"],
+  { icon: typeof CheckCircle2; text: string; label: string }
+> = {
+  ok: { icon: CheckCircle2, text: "text-emerald-500", label: "可用" },
+  limited: {
+    icon: Hourglass,
+    text: "text-amber-600 dark:text-amber-400",
+    label: "限额中",
+  },
+  fail: { icon: XCircle, text: "text-destructive", label: "失败" },
+};
+
+function RoundResultView({ records, testing }: { records: TestRecord[]; testing: boolean }) {
+  const groups = buildGroups(records);
+  const counts = {
+    ok: records.filter((r) => r.ok).length,
+    limited: records.filter((r) => !r.ok && r.limited).length,
+    fail: records.filter((r) => !r.ok && !r.limited).length,
+  };
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-background/50 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <span className="text-muted-foreground">本轮 {records.length} 个 Key：</span>
+        {counts.ok > 0 && <span className="font-medium text-emerald-500">✓ {counts.ok} 可用</span>}
+        {counts.limited > 0 && (
+          <span className="font-medium text-amber-600 dark:text-amber-400">
+            ⏳ {counts.limited} 限额
+          </span>
         )}
-        <span>{limited ? "Key 有效，但已触发限额" : "测试失败"}</span>
-        <span className="text-xs font-normal opacity-80">
-          {record.model} · {record.elapsedMs} ms
-        </span>
+        {counts.fail > 0 && (
+          <span className="font-medium text-destructive">✗ {counts.fail} 失败</span>
+        )}
+        {testing && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
       </div>
-      <div className="break-all font-mono text-xs opacity-90">{record.error}</div>
-      {limited && (
-        <div className="text-xs opacity-80">
-          认证已通过，说明 Key 本身有效；等限额重置后再测即可正常对话。
-        </div>
-      )}
+      <div className="space-y-1.5">
+        {groups.map((g, i) => {
+          const style = GROUP_STYLE[g.status];
+          const Icon = style.icon;
+          const message = g.message.length > 100 ? `${g.message.slice(0, 100)}…` : g.message;
+          return (
+            <div key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${style.text}`} />
+              {g.names.length > 0 ? (
+                g.names.map((n) => (
+                  <span
+                    key={n}
+                    className="rounded bg-secondary px-1.5 py-0.5 text-xs font-medium"
+                    title={n}
+                  >
+                    {n}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-muted-foreground">（未命名）</span>
+              )}
+              <span
+                className={`min-w-0 break-all font-mono text-xs ${style.text}`}
+                title={g.message}
+              >
+                {message}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -220,9 +276,8 @@ function ResultView({ record }: { record: TestRecord }) {
 function GlmKeyTestTool() {
   const [cfg, setCfg] = useState<StoredConfig>(() => loadConfig());
   const [testing, setTesting] = useState(false);
-  const [last, setLast] = useState<TestRecord | null>(
-    () => loadConfig().history[0] ?? null
-  );
+  /** 最近一轮全部记录（逐 key 实时更新；后台触发时经调度器事件同步）。 */
+  const [lastRound, setLastRound] = useState<TestRecord[]>(() => getLastRound() ?? []);
   /** 下次定时触发时间（epoch ms）；null = 未启用。来自模块级调度器。 */
   const [nextAt, setNextAt] = useState<number | null>(() => getNextFireAt());
 
@@ -268,7 +323,8 @@ function GlmKeyTestTool() {
           model: current.model,
           protocol: current.protocol,
         };
-        setLast(record);
+        setLastRound([record]);
+        setLastRoundModule([record]);
         pushHistory([record]);
         return;
       }
@@ -282,8 +338,10 @@ function GlmKeyTestTool() {
             trigger
           );
           records.push(record);
-          setLast(record);
+          // 逐 key 实时刷新本轮结果分组展示。
+          setLastRound([...records]);
         }
+        setLastRoundModule(records);
         pushHistory(records);
       } finally {
         setTesting(false);
@@ -302,6 +360,8 @@ function GlmKeyTestTool() {
       cfgRef.current = fresh;
       setCfg(fresh);
       setNextAt(getNextFireAt());
+      const round = getLastRound();
+      if (round) setLastRound(round);
     });
     return off;
   }, []);
@@ -451,7 +511,9 @@ function GlmKeyTestTool() {
               </span>
             </div>
 
-            {last && !testing && <ResultView record={last} />}
+            {lastRound.length > 0 && (
+              <RoundResultView records={lastRound} testing={testing} />
+            )}
           </div>
         </Section>
 

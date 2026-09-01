@@ -408,6 +408,19 @@ export function onSchedulerUpdate(cb: SchedulerListener): () => void {
   };
 }
 
+/** 最近一轮测试的全部记录（手动/后台共用；供 UI 分组展示）。 */
+let lastRoundRecords: TestRecord[] | null = null;
+
+export function getLastRound(): TestRecord[] | null {
+  return lastRoundRecords;
+}
+
+/** 记录一轮结果并广播（后台触发由 fireScheduled 调用；手动由 UI 结束时调用）。 */
+export function setLastRound(records: TestRecord[]): void {
+  lastRoundRecords = records;
+  emitUpdate();
+}
+
 function emitUpdate(): void {
   for (const cb of listeners) cb();
 }
@@ -529,6 +542,7 @@ async function fireScheduled(): Promise<void> {
         history: [...records.slice().reverse(), ...fresh.history].slice(0, HISTORY_LIMIT),
       };
       saveConfig(next);
+      lastRoundRecords = records;
       emitUpdate();
       notifyResult(records);
     }

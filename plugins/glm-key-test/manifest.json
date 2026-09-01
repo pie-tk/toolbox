@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "glm-key-test",
   "name": "GLM Key 测试",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "测试智谱 GLM Coding Plan API Key 是否可用：发起最简对话请求，查看模型回复；后台定时自动测试（应用启动即生效）与历史记录",
   "category": "developer",
   "keywords": ["zhipu", "glm", "bigmodel", "coding plan", "key", "api", "智谱", "测试", "定时"],
