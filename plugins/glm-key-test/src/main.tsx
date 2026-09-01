@@ -15,6 +15,7 @@ import { createRoot } from "react-dom/client";
 import {
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   CloudDownload,
   Eraser,
   History,
@@ -29,7 +30,6 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  DEFAULT_MODEL,
   MODEL_PRESETS,
   PROTOCOLS,
   PROTOCOL_LABELS,
@@ -89,6 +89,98 @@ function Section({
 function maskKey(key: string): string {
   if (key.length <= 10) return key.slice(0, 2) + "***";
   return `${key.slice(0, 6)}***${key.slice(-4)}`;
+}
+
+/** 模型选择：自由输入 + 点击下拉按钮展开列表（倒序，最新在上）。 */
+function ModelSelect({
+  value,
+  models,
+  presets,
+  onChange,
+}: {
+  value: string;
+  /** 已拉取的模型列表（空 = 未拉取，回退预设）。 */
+  models: string[];
+  presets: readonly string[];
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  /* 点外部 / Esc 关闭。 */
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const list = useMemo(() => {
+    const source = models.length > 0 ? models : presets;
+    return [...new Set(source)].sort((a, b) =>
+      b.localeCompare(a, undefined, { numeric: true })
+    );
+  }, [models, presets]);
+
+  return (
+    <div ref={rootRef} className="relative min-w-0 flex-1">
+      <div className="flex gap-1.5">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value.trim())}
+          placeholder={presets[0]}
+          className={`min-w-0 flex-1 font-mono ${inputClass}`}
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          title="选择模型"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-card shadow-lg">
+          <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+            {models.length > 0 ? `已获取 ${models.length} 个模型（新版本在前）` : "预设模型（可点右侧按钮获取完整列表）"}
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {list.length === 0 && (
+              <div className="px-3 py-2 text-xs text-muted-foreground">（无模型）</div>
+            )}
+            {list.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  onChange(m);
+                  setOpen(false);
+                }}
+                className={
+                  m === value
+                    ? "flex w-full items-center justify-between gap-2 bg-primary/10 px-3 py-1.5 text-left font-mono text-sm text-primary"
+                    : "flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left font-mono text-sm transition-colors hover:bg-accent"
+                }
+              >
+                <span className="min-w-0 truncate">{m}</span>
+                {m === value && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** 单行 key 编辑：名称点击后变为输入框；本体为 password 输入。 */
@@ -508,12 +600,11 @@ function GlmKeyTestTool() {
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">模型</label>
                 <div className="flex gap-2">
-                  <input
-                    list="glm-model-list"
+                  <ModelSelect
                     value={cfg.model}
-                    onChange={(e) => update({ model: e.target.value.trim() })}
-                    placeholder={DEFAULT_MODEL}
-                    className={`min-w-0 flex-1 font-mono ${inputClass}`}
+                    models={cfg.models}
+                    presets={MODEL_PRESETS}
+                    onChange={(model) => update({ model })}
                   />
                   <button
                     className={`${primaryBtnClass} h-9 shrink-0 px-3 text-xs`}
@@ -529,15 +620,10 @@ function GlmKeyTestTool() {
                     {fetchingModels ? "获取中" : "获取模型列表"}
                   </button>
                 </div>
-                <datalist id="glm-model-list">
-                  {(cfg.models.length > 0 ? cfg.models : [...MODEL_PRESETS]).map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
                 <div className="mt-1 text-xs text-muted-foreground">
                   {modelsHint.kind === "ok" && (
                     <span className="text-emerald-500">
-                      已获取 {cfg.models.length} 个模型（{modelsHint.source}），点击输入框下拉选择
+                      已获取 {cfg.models.length} 个模型（{modelsHint.source}），点击 ↓ 选择
                     </span>
                   )}
                   {modelsHint.kind === "error" && (
@@ -545,7 +631,7 @@ function GlmKeyTestTool() {
                   )}
                   {modelsHint.kind === "idle" &&
                     (cfg.models.length > 0
-                      ? `已有 ${cfg.models.length} 个模型，点击输入框下拉选择`
+                      ? `已有 ${cfg.models.length} 个模型，点击 ↓ 选择`
                       : "可点击右侧按钮拉取模型列表，或直接输入模型名")}
                 </div>
               </div>
