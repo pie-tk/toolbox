@@ -15,6 +15,7 @@ import { createRoot } from "react-dom/client";
 import {
   CalendarClock,
   CheckCircle2,
+  CloudDownload,
   Eraser,
   History,
   Hourglass,
@@ -34,6 +35,7 @@ import {
   PROTOCOL_LABELS,
   type KeyEntry,
   type Protocol,
+  fetchModels,
   getNextFireAt,
   getLastRound,
   isBackgroundActive,
@@ -398,6 +400,33 @@ function GlmKeyTestTool() {
     return () => clearInterval(t);
   }, [nextAt]);
 
+  /** 模型列表拉取状态与提示。 */
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [modelsHint, setModelsHint] = useState<
+    { kind: "idle" } | { kind: "ok"; source: string } | { kind: "error"; message: string }
+  >({ kind: "idle" });
+
+  const fetchModelList = useCallback(async () => {
+    const current = cfgRef.current;
+    const first = current.keys.find((k) => k.key.trim());
+    if (!first) {
+      setModelsHint({ kind: "error", message: "未填写任何 API Key" });
+      return;
+    }
+    setFetchingModels(true);
+    try {
+      const result = await fetchModels(first.key, current.protocol);
+      if (result.ok) {
+        update({ models: result.models });
+        setModelsHint({ kind: "ok", source: result.source ?? "" });
+      } else {
+        setModelsHint({ kind: "error", message: result.error ?? "未知错误" });
+      }
+    } finally {
+      setFetchingModels(false);
+    }
+  }, [update]);
+
   /** 历史筛选的 key 名称；null = 全部。选项来自历史中出现过的名称。 */
   const [filterName, setFilterName] = useState<string | null>(null);
   const historyNames = useMemo(() => {
@@ -478,18 +507,47 @@ function GlmKeyTestTool() {
               </div>
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">模型</label>
-                <input
-                  list="glm-model-presets"
-                  value={cfg.model}
-                  onChange={(e) => update({ model: e.target.value.trim() })}
-                  placeholder={DEFAULT_MODEL}
-                  className={`font-mono ${inputClass}`}
-                />
-                <datalist id="glm-model-presets">
-                  {MODEL_PRESETS.map((m) => (
+                <div className="flex gap-2">
+                  <input
+                    list="glm-model-list"
+                    value={cfg.model}
+                    onChange={(e) => update({ model: e.target.value.trim() })}
+                    placeholder={DEFAULT_MODEL}
+                    className={`min-w-0 flex-1 font-mono ${inputClass}`}
+                  />
+                  <button
+                    className={`${primaryBtnClass} h-9 shrink-0 px-3 text-xs`}
+                    onClick={() => void fetchModelList()}
+                    disabled={fetchingModels}
+                    title="用第一个已填写的 Key 从智谱拉取可用模型列表"
+                  >
+                    {fetchingModels ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <CloudDownload className="h-3.5 w-3.5" />
+                    )}
+                    {fetchingModels ? "获取中" : "获取模型列表"}
+                  </button>
+                </div>
+                <datalist id="glm-model-list">
+                  {(cfg.models.length > 0 ? cfg.models : [...MODEL_PRESETS]).map((m) => (
                     <option key={m} value={m} />
                   ))}
                 </datalist>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {modelsHint.kind === "ok" && (
+                    <span className="text-emerald-500">
+                      已获取 {cfg.models.length} 个模型（{modelsHint.source}），点击输入框下拉选择
+                    </span>
+                  )}
+                  {modelsHint.kind === "error" && (
+                    <span className="text-destructive">获取失败：{modelsHint.message}</span>
+                  )}
+                  {modelsHint.kind === "idle" &&
+                    (cfg.models.length > 0
+                      ? `已有 ${cfg.models.length} 个模型，点击输入框下拉选择`
+                      : "可点击右侧按钮拉取模型列表，或直接输入模型名")}
+                </div>
               </div>
             </div>
 

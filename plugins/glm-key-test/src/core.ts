@@ -255,6 +255,66 @@ export async function runTest(
   }
 }
 
+/* ---- 模型列表（OpenAI 兼容 /v1/models；Anthropic 端点同构 data[].id） ---- */
+
+export interface ModelsResult {
+  ok: boolean;
+  models: string[];
+  /** 实际命中的端点说明（失败时为空）。 */
+  source?: string;
+  error?: string;
+}
+
+/** 拉取模型列表：先按当前协议的端点请求，失败自动尝试另一个（key 可能受端点限制）。 */
+export async function fetchModels(
+  key: string,
+  protocol: Protocol
+): Promise<ModelsResult> {
+  const k = key.trim();
+  if (!k) return { ok: false, models: [], error: "未填写 API Key，无法获取模型列表" };
+
+  const tries: Array<{ url: string; label: string; anthropic: boolean }> = [
+    protocol === "anthropic"
+      ? { url: `${BASE_URLS.anthropic}/v1/models`, label: "Anthropic 端点", anthropic: true }
+      : { url: `${BASE_URLS.openai}/models`, label: "Coding Plan 端点", anthropic: false },
+    protocol === "anthropic"
+      ? { url: `${BASE_URLS.openai}/models`, label: "Coding Plan 端点", anthropic: false }
+      : { url: `${BASE_URLS.anthropic}/v1/models`, label: "Anthropic 端点", anthropic: true },
+  ];
+
+  let lastError = "未知错误";
+  for (const t of tries) {
+    const { signal, cancel } = requestTimeout(20_000);
+    try {
+      const headers: Record<string, string> = { Authorization: `Bearer ${k}` };
+      if (t.anthropic) headers["anthropic-version"] = "2023-06-01";
+      const res = await fetch(t.url, { headers, signal });
+      const text = await res.text();
+      if (!res.ok) {
+        lastError = extractApiError(res.status, text, res.statusText);
+        continue; // 换下一个端点试
+      }
+      const parsed = JSON.parse(text) as { data?: Array<{ id?: unknown }> };
+      const models = (parsed.data ?? [])
+        .map((m) => (typeof m.id === "string" ? m.id : ""))
+        .filter(Boolean)
+        .sort();
+      if (models.length === 0) {
+        lastError = "响应中没有模型条目";
+        continue;
+      }
+      return { ok: true, models, source: t.label };
+    } catch (e) {
+      const err = e as { name?: string; message?: string };
+      lastError =
+        err?.name === "AbortError" ? "请求超时（20s）" : err?.message || String(e);
+    } finally {
+      cancel();
+    }
+  }
+  return { ok: false, models: [], error: lastError };
+}
+
 /* ---- 配置持久化（localStorage，仅本插件可见） ---- */
 
 const LS_KEY = "toolbox-glm-key-test-config";
@@ -265,6 +325,8 @@ export interface StoredConfig {
   keys: KeyEntry[];
   protocol: Protocol;
   model: string;
+  /** 「获取模型列表」拉取的模型 id（空 = 未拉取过，回退内置预设）。 */
+  models: string[];
   /** 定时：启用 + 每天触发时刻列表（"HH:MM"，本地时间）。 */
   scheduleEnabled: boolean;
   scheduleTimes: string[];
@@ -277,6 +339,7 @@ export const DEFAULT_CONFIG: StoredConfig = {
   keys: [{ name: "key1", key: "" }],
   protocol: "openai",
   model: DEFAULT_MODEL,
+  models: [],
   scheduleEnabled: false,
   scheduleTimes: ["13:00"],
   history: [],
@@ -364,6 +427,9 @@ export function loadConfig(): StoredConfig {
       keys,
       protocol,
       model: typeof parsed.model === "string" && parsed.model ? parsed.model : DEFAULT_MODEL,
+      models: Array.isArray(parsed.models)
+        ? parsed.models.filter((m): m is string => typeof m === "string")
+        : [],
       scheduleEnabled: parsed.scheduleEnabled === true,
       scheduleTimes: times.length > 0 ? times : DEFAULT_CONFIG.scheduleTimes,
       history: Array.isArray(parsed.history) ? parsed.history.slice(0, HISTORY_LIMIT) : [],
