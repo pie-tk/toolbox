@@ -14,16 +14,22 @@ export const SIDEBAR_DEFAULT_WIDTH = 240;
 /** 历史源记录上限。 */
 const REGISTRY_HISTORY_LIMIT = 10;
 
+/** 点击窗口关闭按钮时的处理方式。 */
+export type CloseAction = "ask" | "minimize" | "exit";
+
 interface SettingsState {
   /** 工具市场 registry.json 的地址（GitHub Pages / Releases / 本地开发服务器）。 */
   registryUrl: string;
   /** 使用过的 registry 地址（新的在前，去重，上限 10 条）。 */
   registryHistory: string[];
   sidebarWidth: number;
+  /** 点击窗口关闭按钮：询问 / 最小化到托盘 / 退出。 */
+  closeAction: CloseAction;
   setRegistryUrl: (url: string) => void;
   removeRegistryHistory: (url: string) => void;
   clearRegistryHistory: () => void;
   setSidebarWidth: (width: number) => void;
+  setCloseAction: (action: CloseAction) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -32,6 +38,7 @@ export const useSettingsStore = create<SettingsState>()(
       registryUrl: DEFAULT_REGISTRY_URL,
       registryHistory: [],
       sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+      closeAction: "ask",
       setRegistryUrl: (registryUrl) =>
         set((state) => {
           const url = registryUrl.trim();
@@ -53,10 +60,11 @@ export const useSettingsStore = create<SettingsState>()(
             Math.max(SIDEBAR_MIN_WIDTH, Math.round(sidebarWidth))
           ),
         }),
+      setCloseAction: (closeAction) => set({ closeAction }),
     }),
     {
       name: "toolbox-settings",
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         const state = (persisted ?? {}) as Partial<SettingsState>;
         // v0 → v1：本地 dev 地址迁移为远程地址。
@@ -83,6 +91,15 @@ export const useSettingsStore = create<SettingsState>()(
             : url
               ? [url]
               : [];
+        }
+        // v3 → v4：新增窗口关闭行为，老用户默认「询问」。
+        if (version < 4) {
+          if (
+            state.closeAction !== "minimize" &&
+            state.closeAction !== "exit"
+          ) {
+            state.closeAction = "ask";
+          }
         }
         return state as SettingsState;
       },

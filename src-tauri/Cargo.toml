@@ -1,6 +1,6 @@
 [package]
 name = "toolbox"
-version = "0.2.2"
+version = "0.2.3"
 description = "ToolBox - a modular desktop toolbox"
 authors = ["ToolBox"]
 edition = "2021"
@@ -14,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 tauri-plugin-process = "2"

@@ -4,7 +4,10 @@ import {
   Check,
   Download,
   Eraser,
+  HelpCircle,
   Loader2,
+  LogOut,
+  Minimize2,
   Moon,
   RefreshCw,
   RotateCcw,
@@ -17,18 +20,18 @@ import { Input } from "@/components/ui/input";
 import { cn, formatBytes } from "@/lib/utils";
 import { getAppInfo } from "@/lib/tauri";
 import {
-  checkForUpdate,
   downloadAndInstall,
   relaunch,
-  type Update,
 } from "@/lib/updater";
 import { uninstallTool } from "@/lib/plugins";
 import {
   DEFAULT_REGISTRY_URL,
   useSettingsStore,
+  type CloseAction,
 } from "@/store/useSettingsStore";
 import { useThemeStore } from "@/store/useThemeStore";
 import { useToolsStore } from "@/store/useToolsStore";
+import { useUpdaterStore } from "@/store/useUpdaterStore";
 import { CATEGORY_LABELS } from "@/types/tool";
 
 function Section({ title, description, children }: {
@@ -55,6 +58,8 @@ export function SettingsPage() {
   const registryHistory = useSettingsStore((s) => s.registryHistory);
   const removeRegistryHistory = useSettingsStore((s) => s.removeRegistryHistory);
   const clearRegistryHistory = useSettingsStore((s) => s.clearRegistryHistory);
+  const closeAction = useSettingsStore((s) => s.closeAction);
+  const setCloseAction = useSettingsStore((s) => s.setCloseAction);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.set);
   const records = useToolsStore((s) => s.records);
@@ -69,20 +74,13 @@ export function SettingsPage() {
     arch: string;
   } | null>(null);
 
-  // 更新器状态
-  const [checking, setChecking] = useState(false);
-  const [checked, setChecked] = useState(false);
-  const [update, setUpdate] = useState<Update | null>(null);
+  // 更新器状态（与侧边栏/启动逻辑共享同一份检查结果）
+  const update = useUpdaterStore((s) => s.update);
+  const checking = useUpdaterStore((s) => s.checking);
+  const lastCheckedAt = useUpdaterStore((s) => s.lastCheckedAt);
+  const checkUpdate = useUpdaterStore((s) => s.check);
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState({ downloaded: 0, total: 0 });
-
-  const checkUpdate = async () => {
-    setChecking(true);
-    const up = await checkForUpdate();
-    setUpdate(up);
-    setChecked(true);
-    setChecking(false);
-  };
 
   const installUpdate = async () => {
     if (!update || installing) return;
@@ -99,7 +97,9 @@ export function SettingsPage() {
 
   useEffect(() => {
     getAppInfo().then((info) => info && setAppInfo(info));
-  }, []);
+    // 进入设置页自动触发一次更新检查（结果共享到侧边栏升级按钮）。
+    checkUpdate();
+  }, [checkUpdate]);
 
   useEffect(() => {
     setDraftUrl(registryUrl);
@@ -156,6 +156,61 @@ export function SettingsPage() {
             </div>
             {theme === "dark" && <Check className="ml-auto h-4 w-4 text-primary" />}
           </button>
+        </div>
+      </Section>
+
+      <Section
+        title="关闭行为"
+        description="点击窗口右上角关闭按钮时的处理方式，可随时修改。"
+      >
+        <div className="grid grid-cols-3 gap-3">
+          {(
+            [
+              {
+                value: "ask" as CloseAction,
+                icon: HelpCircle,
+                label: "每次询问",
+                hint: "弹出选择框",
+              },
+              {
+                value: "minimize" as CloseAction,
+                icon: Minimize2,
+                label: "最小化到托盘",
+                hint: "后台保持运行",
+              },
+              {
+                value: "exit" as CloseAction,
+                icon: LogOut,
+                label: "直接退出",
+                hint: "结束运行并退出",
+              },
+            ]
+          ).map(({ value, icon: Icon, label, hint }) => (
+            <button
+              key={value}
+              onClick={() => setCloseAction(value)}
+              className={cn(
+                "flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-colors",
+                closeAction === value
+                  ? "border-primary bg-primary/10"
+                  : "hover:bg-accent/50"
+              )}
+            >
+              <Icon
+                className={cn(
+                  "h-5 w-5",
+                  closeAction === value ? "text-primary" : "text-muted-foreground"
+                )}
+              />
+              <div>
+                <div className="text-sm font-medium">{label}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>
+              </div>
+              {closeAction === value && (
+                <Check className="h-3.5 w-3.5 text-primary" />
+              )}
+            </button>
+          ))}
         </div>
       </Section>
 
@@ -391,7 +446,7 @@ export function SettingsPage() {
             )}
           </div>
         )}
-        {!update && checked && (
+        {!update && lastCheckedAt !== null && (
           <div className="text-xs text-muted-foreground">✓ 已是最新版本</div>
         )}
       </Section>

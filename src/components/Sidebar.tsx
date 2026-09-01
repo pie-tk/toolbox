@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react";
-import { Home, Moon, Settings, Store, Sun, Wrench } from "lucide-react";
+import { ArrowUpCircle, Home, Moon, Settings, Store, Sun, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAppInfo } from "@/lib/tauri";
 import { unmetRequires } from "@/lib/plugins";
@@ -7,6 +7,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useThemeStore } from "@/store/useThemeStore";
 import { useToolsStore } from "@/store/useToolsStore";
+import { useUpdaterStore } from "@/store/useUpdaterStore";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/types/tool";
 
 /** 左侧导航：入口页 + 按分类分组的已安装工具（宽度可拖拽调整）。 */
@@ -21,6 +22,7 @@ export function Sidebar() {
   const toggleTheme = useThemeStore((s) => s.toggle);
   const metas = useToolsStore((s) => s.metas);
   const capabilities = useToolsStore((s) => s.capabilities);
+  const update = useUpdaterStore((s) => s.update);
   const [version, setVersion] = useState<string>("");
 
   useEffect(() => {
@@ -104,6 +106,16 @@ export function Sidebar() {
         <div className="px-2 pb-1 pt-2 text-xs text-muted-foreground">
           {version ? `ToolBox v${version}` : "ToolBox"}
         </div>
+        {update && (
+          <button
+            onClick={openSettings}
+            title={`发现新版本 v${update.version}，点击前往设置页安装`}
+            className="mx-2 mb-2 flex items-center gap-1.5 rounded-md bg-primary/15 px-2 py-1.5 text-xs text-primary transition-colors hover:bg-primary/25"
+          >
+            <ArrowUpCircle className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">升级 v{update.version}</span>
+          </button>
+        )}
       </div>
     </aside>
   );

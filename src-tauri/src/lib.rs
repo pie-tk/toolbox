@@ -6,7 +6,18 @@ mod commands;
 mod error;
 mod plugin;
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
+
+/// 托盘「显示主界面」/ 左键点击托盘：显示并聚焦主窗口。
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +29,38 @@ pub fn run() {
         .setup(|app| {
             app.manage(commands::proc::ProcState::default());
             app.manage(commands::net::NetState::default());
+
+            // 系统托盘：左键点击显示主界面，右键菜单提供 显示/退出。
+            // 窗口关闭按钮的行为（询问/最小化/退出）由前端按设置处理，
+            // 最小化即隐藏窗口，应用驻留托盘。
+            let show = MenuItem::with_id(app, "tray-show", "显示主界面", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "tray-quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &quit])?;
+            TrayIconBuilder::with_id("main-tray")
+                .icon(
+                    app.default_window_icon()
+                        .expect("缺少应用图标")
+                        .clone(),
+                )
+                .tooltip("ToolBox")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "tray-show" => show_main_window(app),
+                    "tray-quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

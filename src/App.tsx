@@ -1,19 +1,22 @@
 import { useEffect, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AlertTriangle, SearchX, Wrench } from "lucide-react";
 import { toast } from "sonner";
-import { checkForUpdate } from "@/lib/updater";
 import { Sidebar } from "@/components/Sidebar";
 import { EmptyState } from "@/components/EmptyState";
 import { ExternalToolMount } from "@/components/ExternalToolMount";
+import { CloseDialog } from "@/components/CloseDialog";
 import { Button } from "@/components/ui/button";
 import { HomePage } from "@/pages/HomePage";
 import { MarketplacePage } from "@/pages/MarketplacePage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { cn } from "@/lib/utils";
 import { repairCapabilities, unmetRequires } from "@/lib/plugins";
+import type { Update } from "@/lib/updater";
 import { useAppStore } from "@/store/useAppStore";
-import { useSettingsStore } from "@/store/useSettingsStore";
+import { useSettingsStore, type CloseAction } from "@/store/useSettingsStore";
 import { useToolsStore } from "@/store/useToolsStore";
+import { useUpdaterStore } from "@/store/useUpdaterStore";
 import { getBuiltinTool } from "@/tools/registry";
 
 /** 依赖能力未就绪：不加载插件，提供一键修复。 */
@@ -115,16 +118,59 @@ function ToolWorkspace({ toolId }: { toolId: string }) {
 export default function App() {
   const view = useAppStore((s) => s.view);
   const setWidth = useSettingsStore((s) => s.setSidebarWidth);
+  const setCloseAction = useSettingsStore((s) => s.setCloseAction);
   const refreshTools = useToolsStore((s) => s.refresh);
   const [dragging, setDragging] = useState(false);
+  const [closePromptOpen, setClosePromptOpen] = useState(false);
 
-  // 启动时加载已安装的外部插件，并静默检查应用更新。
+  // 启动时加载已安装的外部插件；启动即检查一次更新，之后每 6 小时静默检查
+  // （进入设置页也会触发一次，见 SettingsPage）。
   useEffect(() => {
     refreshTools();
-    checkForUpdate().then((up) => {
-      if (up) toast.info(`发现新版本 v${up.version}，可到「设置 → 关于与更新」安装`);
-    });
+    const notify = (up: Update | null) => {
+      if (up) toast.info(`发现新版本 v${up.version}，可点击侧边栏底部「升级」按钮安装`);
+    };
+    useUpdaterStore.getState().check().then(notify);
+    const timer = window.setInterval(() => {
+      useUpdaterStore.getState().check().then(notify);
+    }, 6 * 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
   }, [refreshTools]);
+
+  // 窗口关闭按钮：按设置处理（询问 / 最小化到托盘 / 退出）。
+  // 托盘图标与「显示主界面 / 退出」菜单见宿主 src-tauri/src/lib.rs。
+  useEffect(() => {
+    const win = getCurrentWindow();
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    win
+      .onCloseRequested((event) => {
+        event.preventDefault();
+        const action = useSettingsStore.getState().closeAction;
+        if (action === "minimize") {
+          win.hide().catch(() => {});
+        } else if (action === "exit") {
+          win.destroy().catch(() => {});
+        } else {
+          setClosePromptOpen(true);
+        }
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {}); // 纯浏览器 dev 环境无窗口 IPC
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  const runCloseAction = (action: CloseAction) => {
+    const win = getCurrentWindow();
+    if (action === "minimize") win.hide().catch(() => {});
+    else win.destroy().catch(() => {});
+  };
 
   // 通用 toast 桥：插件（含后台运行中）经 CustomEvent 请求系统内通知。
   // detail: { title, description?, variant?: "success" | "error" | "warning" | "info" }
@@ -183,6 +229,16 @@ export default function App() {
         {view.type === "settings" && <SettingsPage />}
         {view.type === "tool" && <ToolWorkspace toolId={view.toolId} />}
       </main>
+
+      {closePromptOpen && (
+        <CloseDialog
+          onChoose={(action, remember) => {
+            if (remember) setCloseAction(action);
+            runCloseAction(action);
+          }}
+          onCancel={() => setClosePromptOpen(false)}
+        />
+      )}
     </div>
   );
 }
