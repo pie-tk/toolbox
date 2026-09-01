@@ -30,7 +30,6 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  MODEL_PRESETS,
   PROTOCOLS,
   PROTOCOL_LABELS,
   type KeyEntry,
@@ -95,13 +94,11 @@ function maskKey(key: string): string {
 function ModelSelect({
   value,
   models,
-  presets,
   onChange,
 }: {
   value: string;
-  /** 已拉取的模型列表（空 = 未拉取，回退预设）。 */
+  /** 已拉取的模型列表（空 = 未拉取，下拉显示空态）。 */
   models: string[];
-  presets: readonly string[];
   onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -125,11 +122,10 @@ function ModelSelect({
   }, [open]);
 
   const list = useMemo(() => {
-    const source = models.length > 0 ? models : presets;
-    return [...new Set(source)].sort((a, b) =>
+    return [...new Set(models)].sort((a, b) =>
       b.localeCompare(a, undefined, { numeric: true })
     );
-  }, [models, presets]);
+  }, [models]);
 
   return (
     <div ref={rootRef} className="relative min-w-0 flex-1">
@@ -137,7 +133,7 @@ function ModelSelect({
         <input
           value={value}
           onChange={(e) => onChange(e.target.value.trim())}
-          placeholder={presets[0]}
+          placeholder="glm-5.3-flash"
           className={`min-w-0 flex-1 font-mono ${inputClass}`}
         />
         <button
@@ -152,11 +148,15 @@ function ModelSelect({
       {open && (
         <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-card shadow-lg">
           <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
-            {models.length > 0 ? `已获取 ${models.length} 个模型（新版本在前）` : "预设模型（可点右侧按钮获取完整列表）"}
+            {models.length > 0
+              ? `已获取 ${models.length} 个模型（新版本在前）`
+              : "尚未获取模型列表"}
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
             {list.length === 0 && (
-              <div className="px-3 py-2 text-xs text-muted-foreground">（无模型）</div>
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                （空。点击右侧「获取模型列表」按钮拉取）
+              </div>
             )}
             {list.map((m) => (
               <button
@@ -603,7 +603,6 @@ function GlmKeyTestTool() {
                   <ModelSelect
                     value={cfg.model}
                     models={cfg.models}
-                    presets={MODEL_PRESETS}
                     onChange={(model) => update({ model })}
                   />
                   <button

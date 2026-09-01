@@ -23,10 +23,8 @@ export const BASE_URLS: Record<Protocol, string> = {
   anthropic: "https://open.bigmodel.cn/api/anthropic",
 };
 
-/** 文档确认的 Coding Plan 可用模型（latest-model 页）。 */
-export const MODEL_PRESETS = ["glm-5.3-flash", "glm-5.3"] as const;
-
-export const DEFAULT_MODEL = "glm-5.3-flash";
+/** 模型不内置：默认留空，由「获取模型列表」拉取后选择或手输。 */
+export const DEFAULT_MODEL = "";
 /** 最简测试消息：要求一个字的回复，省 token 且便于断言。 */
 export const TEST_PROMPT = "请只回复：OK";
 
@@ -119,6 +117,9 @@ export async function runTest(
 
   if (!key) {
     return { ...base, ok: false, elapsedMs: 0, error: "未填写 API Key" };
+  }
+  if (!cfg.model.trim()) {
+    return { ...base, ok: false, elapsedMs: 0, error: "未填写模型名（可点「获取模型列表」后选择）" };
   }
 
   const { signal, cancel } = requestTimeout(30_000);
@@ -426,7 +427,7 @@ export function loadConfig(): StoredConfig {
       schemaVersion: 4,
       keys,
       protocol,
-      model: typeof parsed.model === "string" && parsed.model ? parsed.model : DEFAULT_MODEL,
+      model: typeof parsed.model === "string" ? parsed.model : DEFAULT_MODEL,
       models: Array.isArray(parsed.models)
         ? parsed.models.filter((m): m is string => typeof m === "string")
         : [],
