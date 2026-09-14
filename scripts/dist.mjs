@@ -23,8 +23,10 @@ const RELEASE_DIR = path.join(ROOT, "release");
 const TARGET_DIR = path.join(ROOT, "src-tauri", "target", "release");
 const REGISTRY_DIR = path.resolve(ROOT, "..", "toolbox-registry");
 const IS_WIN = process.platform === "win32";
-// 按平台产出：Windows 保持只出 NSIS（历史行为），macOS 出 .app 与 .dmg
-const BUNDLES = IS_WIN ? "nsis" : "app,dmg";
+// 按平台产出：Windows 保持只出 NSIS（历史行为）；macOS 只 bundle .app，
+// .dmg 由下方 hdiutil 直接制作——Tauri 的 bundle_dmg.sh 依赖 Finder AppleScript，
+// 在无 GUI 交互的进程（后台/CI）会因自动化权限失败。
+const BUNDLES = IS_WIN ? "nsis" : "app";
 
 const run = (cmd, env = {}) => {
   const r = spawnSync(cmd, { stdio: "inherit", shell: true, cwd: ROOT, env: { ...process.env, ...env } });
@@ -104,7 +106,6 @@ if (IS_WIN) {
   }
 } else {
   const MACOS_DIR = path.join(TARGET_DIR, "bundle", "macos");
-  const DMG_DIR = path.join(TARGET_DIR, "bundle", "dmg");
 
   // 更新器产物：.app.tar.gz + .sig（createUpdaterArtifacts 生成于 bundle/macos/）
   const appTar = path.join(MACOS_DIR, "ToolBox.app.tar.gz");
@@ -126,16 +127,19 @@ if (IS_WIN) {
     };
   }
 
-  // 手动安装包：.dmg（按版本号精确匹配，回退 mtime 最新）
-  const dmgCandidates = readdirSync(DMG_DIR).filter((f) => f.endsWith(".dmg"));
-  const dmgName =
-    dmgCandidates.find((f) => f === `ToolBox_${version}_x64.dmg` || f === `ToolBox_${version}_aarch64.dmg`) ??
-    dmgCandidates
-      .sort((a, b) => statSync(path.join(DMG_DIR, b)).mtimeMs - statSync(path.join(DMG_DIR, a)).mtimeMs)[0];
-  if (dmgName) {
-    console.log(`选定安装包: ${dmgName}`);
-    copy(path.join(DMG_DIR, dmgName), path.join(RELEASE_DIR, "ToolBox-macos.dmg"));
+  // 手动安装包：hdiutil 直接制作 .dmg（功能与 Tauri 产物等价，无窗口美化）
+  const dmgDest = path.join(RELEASE_DIR, "ToolBox-macos.dmg");
+  const r = spawnSync(
+    "hdiutil",
+    ["create", "-volname", "ToolBox", "-srcfolder", path.join(MACOS_DIR, "ToolBox.app"),
+     "-format", "UDZO", "-ov", dmgDest],
+    { stdio: "inherit" }
+  );
+  if (r.status !== 0) {
+    console.error("✗ hdiutil 制作 dmg 失败");
+    process.exit(1);
   }
+  console.log(`✔ release/ToolBox-macos.dmg  (${(statSync(dmgDest).size / 1024 / 1024).toFixed(2)} MB)`);
 }
 
 /* latest.json：与已发布版本合并，保留其他平台条目（双平台并行发布的唯一正确姿势） */
