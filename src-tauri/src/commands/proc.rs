@@ -65,6 +65,12 @@ fn no_window(cmd: &mut Command) -> &mut Command {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW：不弹控制台，GUI 窗口不受影响
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // 独立进程组（pgid = 子进程 pid）：proc_stop 用 kill -- -pid 整组树杀
+        cmd.process_group(0);
+    }
     cmd
 }
 
@@ -134,8 +140,13 @@ pub fn proc_stop(state: State<ProcState>, id: String) -> AppResult<()> {
     };
     let pid = t.child.id();
     drop(procs);
+    #[cfg(windows)]
     let _ = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .status();
+    #[cfg(unix)]
+    let _ = Command::new("kill")
+        .args(["-9", &format!("-{pid}")]) // 负 pid = 杀整个进程组，覆盖派生子进程
         .status();
     let _ = t.child.wait(); // 回收
     Ok(())

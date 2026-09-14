@@ -1,6 +1,7 @@
 //! 插件服务：registry 拉取、下载（SHA-256 边下边校验）、解压安装、卸载、
 //! 已安装列表与插件文件读取。安装布局（跟随应用所在目录，即安装目录或
-//! 便携 exe 同级；目录不可写时回退 %LOCALAPPDATA%）：
+//! 便携 exe 同级；目录不可写时回退 %LOCALAPPDATA%；macOS 固定用应用
+//! 数据目录，见 data_root）：
 //!
 //! ```text
 //! <应用目录>/
@@ -45,7 +46,8 @@ fn kind_label(kind: &str) -> &'static str {
 }
 
 /// exe 所在目录（可写时返回）。便携版/用户级安装目录可直接落盘，
-/// 工具与主程序放在一起、跟随安装位置。
+/// 工具与主程序放在一起、跟随安装位置。（macOS 不走此路径，见 data_root。）
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn exe_dir_if_writable() -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     let probe = dir.join(".toolbox-write-probe");
@@ -57,6 +59,9 @@ fn exe_dir_if_writable() -> Option<PathBuf> {
 }
 
 fn data_root(app: &AppHandle) -> AppResult<PathBuf> {
+    // macOS：exe 位于 .app 包内，向包内写文件会破坏代码签名（更新器随即失效），
+    // 一律使用应用数据目录（~/Library/Application Support/com.toolbox.app）。
+    #[cfg(not(target_os = "macos"))]
     if let Some(dir) = exe_dir_if_writable() {
         return Ok(dir);
     }

@@ -19,6 +19,8 @@
 3. **安装位置跟随 exe 所在目录**（便携版/安装目录）：`plugins/`、`capabilities/`、
    `cache/`；目录不可写（如 Program Files 机器级安装）才回退 `%LOCALAPPDATA%\com.toolbox.app`。
    修改见 `src-tauri/src/plugin/service.rs` 的 `exe_dir_if_writable()`。
+   **macOS 例外**：exe 位于 .app 包内，写入会破坏代码签名，固定使用
+   `~/Library/Application Support/com.toolbox.app`（见 `data_root()`）。
 4. **mipmap-studio 是完整迁移的插件**：原 Rust 后端已删除，扫描/重命名/撤销等全部
    逻辑在插件 `src/lib/ops.ts`（宿主仅提供 `fs_*` 文件原语命令，见
    `src-tauri/src/commands/host_fs.rs`）；缩略图走 image-core 能力。
@@ -34,7 +36,9 @@
   到 registry 仓库 → push。宿主零改动，用户刷新市场即得。
 - **应用更新**：三处版本号同步改（`src-tauri/tauri.conf.json`、`package.json`、
   `src-tauri/Cargo.toml`）→ `npm run dist`（自动注入 `.tauri/toolbox.key` 私钥签名，
-  产出 setup.exe + .sig + latest.json 并同步到 `../toolbox-registry/app/`）→ push registry
+  Windows 产出 setup.exe + .sig；macOS 产出 .app.tar.gz + .sig + .dmg；
+  latest.json 与线上版本**按平台合并**，双平台并行发布互不覆盖，
+  同步到 `../toolbox-registry/app/`）→ push registry
   → `gh release create`（注意 `-R pie-tk/toolbox`，否则会建到 cwd 仓库）。
 - **签名私钥** `.tauri/toolbox.key`（密码为空，已 gitignore）。**丢失即永远无法发更新**。
 - 更新器端点与公钥配置在 `tauri.conf.json` 的 `plugins.updater`；
