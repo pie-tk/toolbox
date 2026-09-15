@@ -132,8 +132,9 @@ if (IS_WIN) {
     outputs.push(tarName + ".sig");
   }
 
-  // 手动安装包：hdiutil 直接制作 .dmg（功能与 Tauri 产物等价，无窗口美化）
-  const dmgName = `ToolBox_${version}_darwin-${arch}.dmg`;
+  // 手动安装包：hdiutil 直接制作 .dmg（功能与 Tauri 产物等价，无窗口美化）。
+  // dmg 只供手动下载、不进 latest.json 扫描，文件名用人类友好的 macOS。
+  const dmgName = `ToolBox_${version}_macOS.dmg`;
   const dmgDest = path.join(RELEASE_DIR, dmgName);
   const r = spawnSync(
     "hdiutil",

@@ -39,8 +39,10 @@
     `src-tauri/Cargo.toml`）——两台机器发同一版本号。
   - `npm run dist`（自动注入 `.tauri/toolbox.key` 私钥签名）：产物命名
     **`ToolBox_<ver>_<platform>_<kind>`**（win：`windows-x86_64-setup.exe`；mac：
-    `darwin-<arch>.app.tar.gz` + `.dmg`，均带 `.sig`），进 `release/` 与
+    `darwin-<arch>.app.tar.gz` + `.sig`），进 `release/` 与
     `../toolbox-registry/app/`，各版本共存永不覆盖（绕 CDN 缓存）。
+    **例外**：手动安装包 `.dmg` 不进 latest.json 扫描，命名 `ToolBox_<ver>_macOS.dmg`
+    （用户下载时一眼识别平台）。
   - **latest.json 只收"同版本产物已就位"的平台条目**（dist 扫描 app/ 下
     `ToolBox_<ver>_*.sig` 组装；同步前自动 pull registry 带上另一平台产物）。
     **严禁跨版本照抄旧平台条目**——旧条目 = 新版本号 + 旧平台包 → 该平台客户端
@@ -48,11 +50,12 @@
     另一台机器跑完 dist、push 后自动补齐。
   - push registry → `gh release create/upload`（注意 `-R pie-tk/toolbox`），
     assets 用同版命名上传两平台产物。
-- **平台命名规则**：latest.json 的 platforms key 与产物文件名用 Tauri updater
+- **平台命名规则**：latest.json 的 platforms key 与**更新器产物**文件名
+  （`.app.tar.gz`/`setup.exe` 及 `.sig`，参与 latest.json 扫描组装）用 Tauri updater
   协议标识 `darwin-<arch>`（不是 `mac`/`macos`）——updater 客户端按当前系统拼
   key 查表（`process.platform`=darwin 是 Node/Rust 生态惯例），写成别的该平台
-  **永远收不到更新**。**面向人的文案**（GitHub Release 标题/说明、下载页文字）
-  用 `macOS`，仅文件名/JSON key 保持 `darwin`。
+  **永远收不到更新**。**面向人的命名与文案**（GitHub Release 标题/说明、下载页文字、
+  手动安装包 `.dmg` 文件名）用 `macOS`——dmg 不被 latest.json 引用，改名无风险。
 - **macOS 构建必须在 Mac 上做**（Windows 不交叉编译 mac）：产物在 registry 仓
   汇合，谁后跑 dist 谁把 latest.json 补成双平台。
 - **签名私钥** `.tauri/toolbox.key`（密码为空，已 gitignore，**两台机器各存一份**）。
