@@ -48,6 +48,13 @@
     另一台机器跑完 dist、push 后自动补齐。
   - push registry → `gh release create/upload`（注意 `-R pie-tk/toolbox`），
     assets 用同版命名上传两平台产物。
+- **平台命名规则**：latest.json 的 platforms key 与产物文件名用 Tauri updater
+  协议标识 `darwin-<arch>`（不是 `mac`/`macos`）——updater 客户端按当前系统拼
+  key 查表（`process.platform`=darwin 是 Node/Rust 生态惯例），写成别的该平台
+  **永远收不到更新**。**面向人的文案**（GitHub Release 标题/说明、下载页文字）
+  用 `macOS`，仅文件名/JSON key 保持 `darwin`。
+- **macOS 构建必须在 Mac 上做**（Windows 不交叉编译 mac）：产物在 registry 仓
+  汇合，谁后跑 dist 谁把 latest.json 补成双平台。
 - **签名私钥** `.tauri/toolbox.key`（密码为空，已 gitignore，**两台机器各存一份**）。
   **丢失即永远无法发更新**。minisign 签名与文件名无关——产物改名不影响 .sig 有效性。
 - 更新器端点与公钥配置在 `tauri.conf.json` 的 `plugins.updater`；
