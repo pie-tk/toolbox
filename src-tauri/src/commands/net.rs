@@ -592,6 +592,11 @@ pub async fn net_udp_start(
     if opts.reuse.unwrap_or(false) {
         sock.set_reuse_address(true)
             .map_err(|e| AppError::Other(format!("设置端口复用失败: {e}")))?;
+        // macOS：系统 mDNSResponder 常驻 UDP 5353，仅 SO_REUSEADDR 无法共享，
+        // 必须再设 SO_REUSEPORT（双方都设置才允许并存；Linux 语义不同，不设）。
+        #[cfg(target_os = "macos")]
+        sock.set_reuse_port(true)
+            .map_err(|e| AppError::Other(format!("设置端口复用失败: {e}")))?;
     }
     sock.bind(&socket2::SockAddr::from(SocketAddr::from(([0, 0, 0, 0], opts.bind_port))))
         .map_err(|e| AppError::Other(format!("UDP 端口 {} 绑定失败: {e}", opts.bind_port)))?;
