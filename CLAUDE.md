@@ -29,18 +29,27 @@
 
 - **registry 仓库**：`pie-tk/toolbox-registry`（GitHub Pages 即时生效：
   `https://pie-tk.github.io/toolbox-registry/`），内含 `registry.json`（schemaVersion 2：
-  tools + capabilities）、`plugins/*.zip`、`app/`（应用自更新三件套）。
+  tools + capabilities）、`plugins/*.zip`、`app/`（应用自更新产物 + latest.json）。
 - **registry 规则**：`package.file` 是相对 registry.json 所在**目录**的路径（如
   `plugins/x.zip`）；客户端强制 SHA-256 校验；HTML 响应直接拒绝（防 SPA fallback 假包）。
 - **工具更新**：`npm run build:plugins` → 拷贝 `public/registry.json + public/plugins/*.zip`
   到 registry 仓库 → push。宿主零改动，用户刷新市场即得。
-- **应用更新**：三处版本号同步改（`src-tauri/tauri.conf.json`、`package.json`、
-  `src-tauri/Cargo.toml`）→ `npm run dist`（自动注入 `.tauri/toolbox.key` 私钥签名，
-  Windows 产出 setup.exe + .sig；macOS 产出 .app.tar.gz + .sig + .dmg；
-  latest.json 与线上版本**按平台合并**，双平台并行发布互不覆盖，
-  同步到 `../toolbox-registry/app/`）→ push registry
-  → `gh release create`（注意 `-R pie-tk/toolbox`，否则会建到 cwd 仓库）。
-- **签名私钥** `.tauri/toolbox.key`（密码为空，已 gitignore）。**丢失即永远无法发更新**。
+- **应用更新（Windows + macOS 双平台）**：
+  - 三处版本号**双端同步**改（`src-tauri/tauri.conf.json`、`package.json`、
+    `src-tauri/Cargo.toml`）——两台机器发同一版本号。
+  - `npm run dist`（自动注入 `.tauri/toolbox.key` 私钥签名）：产物命名
+    **`ToolBox_<ver>_<platform>_<kind>`**（win：`windows-x86_64-setup.exe`；mac：
+    `darwin-<arch>.app.tar.gz` + `.dmg`，均带 `.sig`），进 `release/` 与
+    `../toolbox-registry/app/`，各版本共存永不覆盖（绕 CDN 缓存）。
+  - **latest.json 只收"同版本产物已就位"的平台条目**（dist 扫描 app/ 下
+    `ToolBox_<ver>_*.sig` 组装；同步前自动 pull registry 带上另一平台产物）。
+    **严禁跨版本照抄旧平台条目**——旧条目 = 新版本号 + 旧平台包 → 该平台客户端
+    无限更新循环（0.2.5 事故实录）。缺的平台该端客户端暂无更新（静默跳过），等
+    另一台机器跑完 dist、push 后自动补齐。
+  - push registry → `gh release create/upload`（注意 `-R pie-tk/toolbox`），
+    assets 用同版命名上传两平台产物。
+- **签名私钥** `.tauri/toolbox.key`（密码为空，已 gitignore，**两台机器各存一份**）。
+  **丢失即永远无法发更新**。minisign 签名与文件名无关——产物改名不影响 .sig 有效性。
 - 更新器端点与公钥配置在 `tauri.conf.json` 的 `plugins.updater`；
   端点 = registry Pages `/app/latest.json`（jsDelivr `@main` 分支缓存更新过慢，勿用）。
 
