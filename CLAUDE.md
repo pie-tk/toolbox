@@ -36,12 +36,23 @@
 - **工具更新**：`npm run build:plugins` → 拷贝 `public/registry.json + public/plugins/*.zip`
   到 registry 仓库 → push。宿主零改动，用户刷新市场即得。
 - **应用更新（Windows + macOS 双平台）**：
+  - **改版本号前必查远程**：先拉 `registry 仓 app/latest.json` 与 GitHub Release
+    资产清单，确认当前版本是否已含**本平台**条目，再决定升不升：
+    - 本平台条目**缺失**（另一端已发、这端未发）→ **不升版本**，本机按同版本
+      构建 `npm run dist` 补齐该平台即可（本平台用户从未收到过该版本，本机
+      修复自然随包带上）。
+    - 本平台条目**已在远程** → 任何改动必须升版本：同版本产物永不覆盖，且已
+      收到该版本的用户只有看到新版本号才会收到修复。
   - 三处版本号**双端同步**改（`src-tauri/tauri.conf.json`、`package.json`、
     `src-tauri/Cargo.toml`）——两台机器发同一版本号。
   - `npm run dist`（自动注入 `.tauri/toolbox.key` 私钥签名）：产物命名
     **`ToolBox_<ver>_<platform>_<kind>`**（win：`windows-x86_64-setup.exe`；mac：
     `darwin-<arch>.app.tar.gz` + `.sig`），进 `release/` 与
     `../toolbox-registry/app/`，各版本共存永不覆盖（绕 CDN 缓存）。
+    **唯一例外（2026-09-16，owner 决定）**：0.2.6 mac 首发包点击「屏幕取色」即崩，
+    因发布仅数小时、mac 用户只有 owner 本人（已装修复版），经确认后**同版本重签
+    替换**线上产物（registry 重推 + Release `--clobber`），代价是已装旧 0.2.6 的
+    mac 端不触发更新、需手动覆盖。常规修复仍须升版本，勿效仿。
     **例外**：手动安装包 `.dmg` 不进 latest.json 扫描，命名 `ToolBox_<ver>_macOS.dmg`
     （用户下载时一眼识别平台）。便携版 `release/ToolBox.exe` 仅本地调试用，
     **不进任何发布渠道**（不传 Release、不进 registry）。
