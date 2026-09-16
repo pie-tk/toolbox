@@ -43,7 +43,8 @@
     `darwin-<arch>.app.tar.gz` + `.sig`），进 `release/` 与
     `../toolbox-registry/app/`，各版本共存永不覆盖（绕 CDN 缓存）。
     **例外**：手动安装包 `.dmg` 不进 latest.json 扫描，命名 `ToolBox_<ver>_macOS.dmg`
-    （用户下载时一眼识别平台）。
+    （用户下载时一眼识别平台）。便携版 `release/ToolBox.exe` 仅本地调试用，
+    **不进任何发布渠道**（不传 Release、不进 registry）。
   - **latest.json 只收"同版本产物已就位"的平台条目**（dist 扫描 app/ 下
     `ToolBox_<ver>_*.sig` 组装；同步前自动 pull registry 带上另一平台产物）。
     **严禁跨版本照抄旧平台条目**——旧条目 = 新版本号 + 旧平台包 → 该平台客户端
