@@ -34,18 +34,23 @@ import { useToolsStore } from "@/store/useToolsStore";
 import { useUpdaterStore } from "@/store/useUpdaterStore";
 import { CATEGORY_LABELS } from "@/types/tool";
 
-function Section({ title, description, children }: {
+function Section({ title, description, right, children }: {
   title: string;
   description?: string;
-  children: ReactNode;
+  /** 标题行右侧插槽（放紧凑的选项按钮等）。 */
+  right?: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <section className="space-y-4 rounded-lg border bg-card p-5">
-      <div>
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {description && (
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-        )}
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          {description && (
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+          )}
+        </div>
+        {right && <div className="shrink-0">{right}</div>}
       </div>
       {children}
     </section>
@@ -122,97 +127,68 @@ export function SettingsPage() {
     <div className="mx-auto max-w-3xl animate-fade-in space-y-4 p-8">
       <h1 className="text-2xl font-semibold">设置</h1>
 
-      <Section title="外观" description="切换界面明暗主题，偏好会自动保存。">
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setTheme("light")}
-            className={cn(
-              "flex items-center gap-3 rounded-lg border p-4 text-left transition-colors",
-              theme === "light"
-                ? "border-primary bg-primary/10"
-                : "hover:bg-accent/50"
-            )}
-          >
-            <Sun className="h-5 w-5 text-primary" />
-            <div>
-              <div className="text-sm font-medium">亮色模式</div>
-              <div className="text-xs text-muted-foreground">浅色背景，适合明亮环境</div>
-            </div>
-            {theme === "light" && <Check className="ml-auto h-4 w-4 text-primary" />}
-          </button>
-          <button
-            onClick={() => setTheme("dark")}
-            className={cn(
-              "flex items-center gap-3 rounded-lg border p-4 text-left transition-colors",
-              theme === "dark"
-                ? "border-primary bg-primary/10"
-                : "hover:bg-accent/50"
-            )}
-          >
-            <Moon className="h-5 w-5 text-primary" />
-            <div>
-              <div className="text-sm font-medium">暗色模式</div>
-              <div className="text-xs text-muted-foreground">深色背景，护眼</div>
-            </div>
-            {theme === "dark" && <Check className="ml-auto h-4 w-4 text-primary" />}
-          </button>
-        </div>
-      </Section>
+      <Section
+        title="外观"
+        description="切换界面明暗主题，偏好会自动保存。"
+        right={
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setTheme("light")}
+              className={cn(
+                "flex items-center gap-1.5 whitespace-nowrap rounded-md border px-3 py-1.5 text-xs transition-colors",
+                theme === "light"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent/50"
+              )}
+            >
+              <Sun className="h-3.5 w-3.5" />
+              亮色
+            </button>
+            <button
+              onClick={() => setTheme("dark")}
+              className={cn(
+                "flex items-center gap-1.5 whitespace-nowrap rounded-md border px-3 py-1.5 text-xs transition-colors",
+                theme === "dark"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent/50"
+              )}
+            >
+              <Moon className="h-3.5 w-3.5" />
+              暗色
+            </button>
+          </div>
+        }
+      />
 
       <Section
         title="关闭行为"
         description="点击窗口右上角关闭按钮时的处理方式，可随时修改。"
-      >
-        <div className="grid grid-cols-3 gap-3">
-          {(
-            [
-              {
-                value: "ask" as CloseAction,
-                icon: HelpCircle,
-                label: "每次询问",
-                hint: "弹出选择框",
-              },
-              {
-                value: "minimize" as CloseAction,
-                icon: Minimize2,
-                label: "最小化到托盘",
-                hint: "后台保持运行",
-              },
-              {
-                value: "exit" as CloseAction,
-                icon: LogOut,
-                label: "直接退出",
-                hint: "结束运行并退出",
-              },
-            ]
-          ).map(({ value, icon: Icon, label, hint }) => (
-            <button
-              key={value}
-              onClick={() => setCloseAction(value)}
-              className={cn(
-                "flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-colors",
-                closeAction === value
-                  ? "border-primary bg-primary/10"
-                  : "hover:bg-accent/50"
-              )}
-            >
-              <Icon
+        right={
+          <div className="flex gap-1.5">
+            {(
+              [
+                { value: "ask" as CloseAction, icon: HelpCircle, label: "每次询问" },
+                { value: "minimize" as CloseAction, icon: Minimize2, label: "最小化到托盘" },
+                { value: "exit" as CloseAction, icon: LogOut, label: "直接退出" },
+              ]
+            ).map(({ value, icon: Icon, label }) => (
+              <button
+                key={value}
+                onClick={() => setCloseAction(value)}
                 className={cn(
-                  "h-5 w-5",
-                  closeAction === value ? "text-primary" : "text-muted-foreground"
+                  "flex items-center gap-1.5 whitespace-nowrap rounded-md border px-3 py-1.5 text-xs transition-colors",
+                  closeAction === value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent/50"
                 )}
-              />
-              <div>
-                <div className="text-sm font-medium">{label}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>
-              </div>
-              {closeAction === value && (
-                <Check className="h-3.5 w-3.5 text-primary" />
-              )}
-            </button>
-          ))}
-        </div>
-      </Section>
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       <Section
         title="工具源"

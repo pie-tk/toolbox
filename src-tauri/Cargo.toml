@@ -1,6 +1,6 @@
 [package]
 name = "toolbox"
-version = "0.2.5"
+version = "0.2.6"
 description = "ToolBox - a modular desktop toolbox"
 authors = ["ToolBox"]
 edition = "2021"
@@ -34,6 +34,15 @@ futures-util = { version = "0.3", default-features = false, features = ["std", "
 if-addrs = "0.13"
 socket2 = { version = "0.5", features = ["all"] }
 base64 = "0.22"
+
+[target.'cfg(windows)'.dependencies]
+# 屏幕取色原语（commands/screen.rs）：GDI 采样 + GetAsyncKeyState + 系统光标替换
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [features]
 # Used for production builds where the frontend is bundled.

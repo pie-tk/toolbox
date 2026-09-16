@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "color-picker",
+  "name": "取色器",
+  "version": "0.1.3",
+  "description": "屏幕取色与色盘：吸管取色实时预览，HEX/RGB/HSL/HSV/CMYK 等多格式换算与一键复制",
+  "category": "image",
+  "keywords": ["取色", "取色器", "颜色", "色盘", "屏幕取色", "吸管", "color", "picker", "eyedropper", "hex", "rgb", "hsl"],
+  "icon": "pipette",
+  "layout": "card",
+  "entry": "module.js",
+  "style": "style.css",
+  "minAppVersion": "0.2.6"
+}

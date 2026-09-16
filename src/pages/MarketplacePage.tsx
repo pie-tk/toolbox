@@ -2,17 +2,20 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   AlertCircle,
+  ArrowUpCircle,
   Check,
   Download,
   Loader2,
   RefreshCw,
+  Search,
+  SearchX,
   Store,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { formatBytes } from "@/lib/utils";
+import { cn, formatBytes, fuzzyMatch } from "@/lib/utils";
 import { getAppInfo } from "@/lib/tauri";
 import {
   iconFromName,
@@ -62,6 +65,18 @@ function versionGte(a: string, b: string): boolean {
   return true;
 }
 
+/** 市场搜索：名称 / 关键词 / ID 模糊匹配，描述按子串匹配。 */
+function matchesQuery(tool: RegistryTool, query: string): boolean {
+  if (!query.trim()) return true;
+  const m = tool.manifest;
+  return (
+    fuzzyMatch(query, m.name) ||
+    fuzzyMatch(query, m.id) ||
+    (m.keywords ?? []).some((k) => fuzzyMatch(query, k)) ||
+    (m.description ?? "").toLowerCase().includes(query.toLowerCase())
+  );
+}
+
 export function MarketplacePage() {
   const registryUrl = useSettingsStore((s) => s.registryUrl);
   const records = useToolsStore((s) => s.records);
@@ -80,6 +95,7 @@ export function MarketplacePage() {
   const [installing, setInstalling] = useState<Record<string, InstallProgress>>({});
   const [uninstalling, setUninstalling] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("0.0.0");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     getAppInfo().then((info) => info && setAppVersion(info.version));
@@ -162,6 +178,9 @@ export function MarketplacePage() {
   };
 
   const isCacheStale = cachedUrl === registryUrl && !!doc;
+  const filteredTools = doc
+    ? doc.tools.filter((t) => matchesQuery(t, search))
+    : [];
 
   return (
     <div className="mx-auto max-w-5xl animate-fade-in space-y-6 p-8">
@@ -174,14 +193,25 @@ export function MarketplacePage() {
             </p>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => fetchMarket(registryUrl)} disabled={fetching}>
-          {fetching ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
-          )}
-          刷新
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 w-64 items-center gap-2 rounded-md border border-input bg-background px-3 shadow-sm transition-colors focus-within:ring-1 focus-within:ring-ring">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索工具名称、关键词…"
+              className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={() => fetchMarket(registryUrl)} disabled={fetching}>
+            {fetching ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            刷新
+          </Button>
+        </div>
       </div>
 
       {error && !doc && (
@@ -214,9 +244,17 @@ export function MarketplacePage() {
         <EmptyState icon={Store} title="目录为空" description="registry 中没有可用的工具" />
       )}
 
-      {doc && doc.tools.length > 0 && (
+      {doc && doc.tools.length > 0 && filteredTools.length === 0 && (
+        <EmptyState
+          icon={SearchX}
+          title="没有匹配的工具"
+          description="换个关键词试试，或清空搜索查看全部工具"
+        />
+      )}
+
+      {doc && filteredTools.length > 0 && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {doc.tools.map((tool) => {
+          {filteredTools.map((tool) => {
             const m = tool.manifest;
             const Icon = iconFromName(m.icon);
             const status = statusOf(tool);
@@ -314,8 +352,19 @@ export function MarketplacePage() {
                       </Button>
                     </div>
                   ) : hostOk ? (
-                    <Button size="sm" onClick={() => handleInstall(tool)}>
-                      <Download className="h-3.5 w-3.5" />
+                    <Button
+                      size="sm"
+                      onClick={() => handleInstall(tool)}
+                      className={cn(
+                        status === "updatable" &&
+                          "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25"
+                      )}
+                    >
+                      {status === "updatable" ? (
+                        <ArrowUpCircle className="h-3.5 w-3.5" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
                       {status === "updatable" ? "更新" : "下载"}
                     </Button>
                   ) : (

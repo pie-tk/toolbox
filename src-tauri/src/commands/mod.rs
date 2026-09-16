@@ -4,4 +4,5 @@
 pub mod host_fs;
 pub mod net;
 pub mod proc;
+pub mod screen;
 pub mod system_cmd;

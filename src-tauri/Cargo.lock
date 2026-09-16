@@ -4339,7 +4339,7 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "toolbox"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -4360,6 +4360,7 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "uuid",
+ "windows-sys 0.59.0",
  "zip 2.4.2",
 ]
 

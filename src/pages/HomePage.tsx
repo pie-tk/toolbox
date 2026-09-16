@@ -1,5 +1,4 @@
 import { Search, Store } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { ToolCard } from "@/components/ToolCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -27,13 +26,13 @@ export function HomePage() {
     <div className="mx-auto max-w-4xl animate-fade-in space-y-8 p-8">
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold">工具箱</h1>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+        <div className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-background px-3 shadow-sm transition-colors focus-within:ring-1 focus-within:ring-ring">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索工具名称、关键词…"
-            className="pl-9"
+            className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </div>
       </div>

@@ -88,6 +88,9 @@ pub fn run() {
             commands::net::net_udp_send,
             commands::net::net_udp_stop,
             commands::net::net_local_ips,
+            commands::screen::screen_sample,
+            commands::screen::screen_cursor_set,
+            commands::screen::screen_cursor_reset,
             plugin::plugin_fetch_registry,
             plugin::plugin_install,
             plugin::plugin_repair_capabilities,
@@ -98,6 +101,12 @@ pub fn run() {
             plugin::capability_read_file,
             plugin::capability_read_wasm,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app, event| {
+            // 退出前恢复系统光标：取色中途退出防吸管光标残留整个会话
+            if let tauri::RunEvent::Exit = event {
+                commands::screen::restore_system_cursor();
+            }
+        });
 }
