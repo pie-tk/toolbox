@@ -49,10 +49,15 @@
     **`ToolBox_<ver>_<platform>_<kind>`**（win：`windows-x86_64-setup.exe`；mac：
     `darwin-<arch>.app.tar.gz` + `.sig`），进 `release/` 与
     `../toolbox-registry/app/`，各版本共存永不覆盖（绕 CDN 缓存）。
-    **唯一例外（2026-09-16，owner 决定）**：0.2.6 mac 首发包点击「屏幕取色」即崩，
-    因发布仅数小时、mac 用户只有 owner 本人（已装修复版），经确认后**同版本重签
-    替换**线上产物（registry 重推 + Release `--clobber`），代价是已装旧 0.2.6 的
-    mac 端不触发更新、需手动覆盖。常规修复仍须升版本，勿效仿。
+    **同版本重签替换例外（均 owner 决定，常规修复仍须升版本，勿效仿）**：
+    - **2026-09-16**：0.2.6 mac 首发包点击「屏幕取色」即崩。发布仅数小时、
+      Release 下载量 0、owner 本人已装修复版，经确认后同版本重签替换线上产物
+      （registry 重推 + Release `--clobber`）。
+    - **2026-09-18**：0.2.6 mac 产物无 macOS 代码签名，Sequoia 静默拦截组播
+      （simulator 发现 60s 超时，详见下方 macOS 签名条目）。同样下载量 0，
+      owner 决定替换：本机配 `signingIdentity: "-"` 重跑 dist，替换 registry +
+      Release 的 mac 产物（tar.gz/.sig/dmg/latest.json）。两次共同代价：已装
+      0.2.6 的 mac 端不触发更新、需手动覆盖。
     **例外**：手动安装包 `.dmg` 不进 latest.json 扫描，命名 `ToolBox_<ver>_macOS.dmg`
     （用户下载时一眼识别平台）。便携版 `release/ToolBox.exe` 仅本地调试用，
     **不进任何发布渠道**（不传 Release、不进 registry）。
@@ -71,6 +76,14 @@
   手动安装包 `.dmg` 文件名）用 `macOS`——dmg 不被 latest.json 引用，改名无风险。
 - **macOS 构建必须在 Mac 上做**（Windows 不交叉编译 mac）：产物在 registry 仓
   汇合，谁后跑 dist 谁把 latest.json 补成双平台。
+- **macOS 产物必须带代码签名**（`tauri.conf.json` 已配 `bundle.macOS.signingIdentity:
+  "-"` 即 ad-hoc）：macOS Sequoia 的「本地网络」隐私控制会**静默丢弃无签名进程的
+  组播/广播流量**（连授权弹窗都不出，日志仅见 `Failed to get the signing identifier`），
+  症状 = simulator 等 UDP 组播发现 60 秒超时（0.2.6 实锤，ad-hoc 重签后恢复）。
+  必须在 `tauri build` 内签名（updater 的 `.app.tar.gz` 在 build 内打包，事后补签
+  tar.gz 里的 app 是旧的无签名版且会破坏 .sig）。发版前可 `codesign -dv` 验证。
+  注意与 updater 的 minisign 签名是两回事。0.2.5 及之前 mac 产物无签名；0.2.6 mac
+  产物 2026-09-18 已同版本替换为 ad-hoc 签名版（见上方例外记录）。
 - **签名私钥** `.tauri/toolbox.key`（密码为空，已 gitignore，**两台机器各存一份**）。
   **丢失即永远无法发更新**。minisign 签名与文件名无关——产物改名不影响 .sig 有效性。
 - 更新器端点与公钥配置在 `tauri.conf.json` 的 `plugins.updater`；

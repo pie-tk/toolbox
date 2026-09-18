@@ -10,6 +10,10 @@ description: 发布应用新版本（签名构建 + registry 推送 + GitHub Rel
    - `release/ToolBox-setup.exe` + `.sig`（NSIS 安装包 + minisign 签名）
    - `release/latest.json`（更新清单，version 应为新版本号）
    - `release/ToolBox.exe`（便携版）仅本地调试用，**不上传**（不进 Release 也不进 registry）
+   - macOS 侧另出 `.app.tar.gz`/`.dmg`；**发布前必验签名**：
+     `codesign -dv src-tauri/target/release/bundle/macos/ToolBox.app` 应显示
+     `Signature=adhoc`（Sequoia 会静默丢弃无签名 app 的组播流量 → simulator
+     发现 60s 超时；tauri.conf.json 已配 signingIdentity="-"，异常则先修再发）
 4. 提交推送 registry 仓库（`app/` 三个文件）。git 失败时重试，再不行走 gh api Contents。
 5. 创建 GitHub Release（**必须 `-R pie-tk/toolbox`**，否则会建到 cwd 所在仓库）：
    ```
