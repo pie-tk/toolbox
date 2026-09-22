@@ -6,17 +6,21 @@
  *   - Anthropic Message 协议:      https://open.bigmodel.cn/api/anthropic
  * 认证：Authorization: Bearer <key>（Coding Plan Key，非 JWT，无需签名）。
  *
- * 在 WebView 内直接 fetch：open.bigmodel.cn 已验证返回
- * Access-Control-Allow-Origin 回显 Origin，宿主 CSP connect-src 允许 https://*。
+ * 出站请求统一走 httpRequest：优先经宿主原语 net_http_request（commands/net.rs，
+ * 系统代理→直连回退）。原因：智谱 OpenAI 端点支持 CORS（WebView 可直连），但
+ * Anthropic 端点 /api/anthropic/* 的预检不带任何 CORS 头，WebView 直连必被拦
+ * （Failed to fetch）——只能经宿主转发。纯浏览器 dev 与老宿主（<0.2.7，无此
+ * 命令）回退直接 fetch，届时 Anthropic 协议不可用并给出升级提示。
+ *
+ * 测试策略（v1.9 起，无协议选择）：Anthropic 协议优先（Coding Plan 的主用法，
+ * 如 Claude Code），失败自动以 OpenAI 协议兜底重试一次；两次请求合并为一条
+ * 记录——最终结果 + 过程备注（note 记录前次失败原因）。
  */
+
+import { invoke } from "@tauri-apps/api/core";
 
 export const PROTOCOLS = ["openai", "anthropic"] as const;
 export type Protocol = (typeof PROTOCOLS)[number];
-
-export const PROTOCOL_LABELS: Record<Protocol, string> = {
-  openai: "OpenAI 协议",
-  anthropic: "Anthropic 协议",
-};
 
 export const BASE_URLS: Record<Protocol, string> = {
   openai: "https://open.bigmodel.cn/api/coding/paas/v4",
@@ -39,7 +43,6 @@ export interface TestConfig {
   key: string;
   /** 记录归属的 key 名称（写入 TestRecord.keyName）。 */
   keyName: string;
-  protocol: Protocol;
   model: string;
 }
 
@@ -62,7 +65,10 @@ export interface TestRecord {
   /** 测试的 key 名称（历史筛选依据）。 */
   keyName: string;
   model: string;
+  /** 最终判定所依据的协议（成功者；双败时为最后尝试的 openai）。 */
   protocol: Protocol;
+  /** 过程备注：Anthropic 失败、OpenAI 兜底成功时记录前次失败原因。 */
+  note?: string;
 }
 
 /* ---- 请求与解析 ---- */
@@ -100,95 +106,118 @@ function requestTimeout(ms: number): { signal: AbortSignal; cancel: () => void }
   return { signal: ctrl.signal, cancel: () => clearTimeout(timer) };
 }
 
-/** 发起一次最简对话测试，永不抛异常——失败信息收纳在 TestRecord.error。 */
-export async function runTest(
-  cfg: TestConfig,
-  trigger: TestRecord["trigger"] = "manual"
-): Promise<TestRecord> {
-  const key = cfg.key.trim();
-  const started = Date.now();
-  const base: Omit<TestRecord, "ok" | "elapsedMs" | "reply" | "usage" | "error"> = {
-    at: started,
-    trigger,
-    keyName: cfg.keyName,
-    model: cfg.model,
-    protocol: cfg.protocol,
-  };
+/* ---- 出站请求统一出口：宿主原语优先，fetch 回退 ---- */
 
-  if (!key) {
-    return { ...base, ok: false, elapsedMs: 0, error: "未填写 API Key" };
-  }
-  if (!cfg.model.trim()) {
-    return { ...base, ok: false, elapsedMs: 0, error: "未填写模型名（可点「获取模型列表」后选择）" };
-  }
+/** 宿主 net_http_request 原语的返回（commands/net.rs HttpResult）。 */
+interface HostHttpResult {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+}
 
-  const { signal, cancel } = requestTimeout(30_000);
-  try {
-    let res: Response;
-    if (cfg.protocol === "anthropic") {
-      res = await fetch(`${BASE_URLS.anthropic}/v1/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
-          "anthropic-version": "2023-06-01",
+function hasHostIpc(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+/**
+ * 出站 HTTP：优先 invoke 宿主原语 net_http_request（绕开 CORS、系统代理→直连
+ * 回退）；无 Tauri IPC（纯浏览器 dev）或老宿主未注册该命令（<0.2.7）时回退
+ * 直接 fetch。fetch 路径的 AbortError 统一转成超时文案。
+ */
+async function httpRequest(
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number }
+): Promise<{ status: number; text: string }> {
+  const timeoutMs = init.timeoutMs ?? 30_000;
+  if (hasHostIpc()) {
+    try {
+      const r = await invoke<HostHttpResult>("net_http_request", {
+        opts: {
+          url,
+          method: init.method ?? "GET",
+          headers: init.headers ?? {},
+          body: init.body ?? null,
+          timeoutMs,
         },
-        body: JSON.stringify({
-          model: cfg.model,
-          // 推理模型（glm-5.3）的思考也计入输出预算：给足余量避免
-          // reasoning 吃光 token 后 content 为空。
-          max_tokens: 512,
-          messages: [{ role: "user", content: TEST_PROMPT }],
-        }),
-        signal,
       });
-    } else {
-      res = await fetch(`${BASE_URLS.openai}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
-        },
-        body: JSON.stringify({
-          model: cfg.model,
-          messages: [{ role: "user", content: TEST_PROMPT }],
-          // 推理模型（glm-5.3）的思考也计入输出预算：给足余量避免
-          // reasoning 吃光 token 后 content 为空。
-          max_tokens: 512,
-        }),
-        signal,
-      });
+      return { status: r.status, text: r.body };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // 提及命令名 = 老宿主未注册（<0.2.7）→ 回退 fetch（Anthropic 端点将得到
+      // CORS 错误，runTest 会附升级提示）；其余为真实请求失败（中文错误链），上抛。
+      if (!msg.includes("net_http_request")) throw new Error(msg);
     }
+  }
+  const { signal, cancel } = requestTimeout(timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: init.method ?? "GET",
+      headers: init.headers,
+      body: init.body,
+      signal,
+    });
+    return { status: res.status, text: await res.text() };
+  } catch (e) {
+    const err = e as { name?: string };
+    if (err?.name === "AbortError") {
+      throw new Error(`请求超时（${Math.round(timeoutMs / 1000)}s）`);
+    }
+    throw e;
+  } finally {
+    cancel();
+  }
+}
 
-    const text = await res.text();
-    const elapsedMs = Date.now() - started;
+/** 单协议一次尝试的结果（runTest 的内部步骤，永不抛异常）。 */
+interface AttemptResult {
+  ok: boolean;
+  limited?: boolean;
+  reply?: string;
+  usage?: TestRecord["usage"];
+  error?: string;
+}
 
-    if (!res.ok) {
-      return {
-        ...base,
-        ok: false,
-        limited: isLimited(res.status),
-        elapsedMs,
-        error: extractApiError(res.status, text, res.statusText),
-      };
+/** 按指定协议发起一次最简对话，永不抛异常——失败信息收纳在 error。 */
+async function attemptOnce(key: string, model: string, protocol: Protocol): Promise<AttemptResult> {
+  const url =
+    protocol === "anthropic"
+      ? `${BASE_URLS.anthropic}/v1/messages`
+      : `${BASE_URLS.openai}/chat/completions`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${key}`,
+  };
+  if (protocol === "anthropic") headers["anthropic-version"] = "2023-06-01";
+  // 推理模型（glm-5.3）的思考也计入输出预算：给足余量避免
+  // reasoning 吃光 token 后 content 为空。
+  const payload =
+    protocol === "anthropic"
+      ? { model, max_tokens: 512, messages: [{ role: "user", content: TEST_PROMPT }] }
+      : { model, messages: [{ role: "user", content: TEST_PROMPT }], max_tokens: 512 };
+
+  try {
+    const { status, text } = await httpRequest(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      timeoutMs: 30_000,
+    });
+
+    if (status < 200 || status >= 300) {
+      return { ok: false, limited: isLimited(status), error: extractApiError(status, text, "") };
     }
 
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(text) as Record<string, unknown>;
     } catch {
-      return {
-        ...base,
-        ok: false,
-        elapsedMs,
-        error: `响应不是合法 JSON：${text.slice(0, 300)}`,
-      };
+      return { ok: false, error: `响应不是合法 JSON：${text.slice(0, 300)}` };
     }
 
     /* Anthropic: {content: [{type:"text", text}], usage:{input_tokens, output_tokens}} */
     let reply = "";
     let usage: TestRecord["usage"];
-    if (cfg.protocol === "anthropic") {
+    if (protocol === "anthropic") {
       const content = parsed.content;
       if (Array.isArray(content)) {
         reply = content
@@ -235,25 +264,82 @@ export async function runTest(
 
     if (!reply) {
       // 附上原始响应片段辅助排查（截断），避免只有一句模糊描述。
-      return {
-        ...base,
-        ok: false,
-        elapsedMs,
-        error: `请求成功但未解析到回复文本：${text.slice(0, 300)}`,
-      };
+      return { ok: false, error: `请求成功但未解析到回复文本：${text.slice(0, 300)}` };
     }
-    return { ...base, ok: true, elapsedMs, reply, usage };
+    return { ok: true, reply, usage };
   } catch (e) {
-    const elapsedMs = Date.now() - started;
     const err = e as { name?: string; message?: string };
-    const reason =
-      err?.name === "AbortError"
-        ? "请求超时（30s）"
-        : err?.message || String(e);
-    return { ...base, ok: false, elapsedMs, error: `网络错误：${reason}` };
-  } finally {
-    cancel();
+    let reason = err?.message || String(e);
+    // fetch 回退路径（浏览器 dev / 老宿主）下，Anthropic 端点因无 CORS 必被拦。
+    if (protocol === "anthropic" && /Failed to fetch|Load failed/i.test(reason)) {
+      reason += "（该端点未开 CORS：需 ToolBox ≥ 0.2.7 经宿主转发，当前环境回退了直连）";
+    }
+    return { ok: false, error: `网络错误：${reason}` };
   }
+}
+
+/**
+ * 测试一个 key：Anthropic 协议优先，失败自动以 OpenAI 协议兜底重试一次。
+ * 两次请求合并为一条记录——最终结果 + 过程备注（note 记录前次失败原因）。
+ * 永不抛异常。
+ */
+export async function runTest(
+  cfg: TestConfig,
+  trigger: TestRecord["trigger"] = "manual"
+): Promise<TestRecord> {
+  const key = cfg.key.trim();
+  const started = Date.now();
+  const base: Omit<
+    TestRecord,
+    "ok" | "elapsedMs" | "limited" | "reply" | "usage" | "error" | "note"
+  > = {
+    at: started,
+    trigger,
+    keyName: cfg.keyName,
+    model: cfg.model,
+    protocol: "anthropic",
+  };
+
+  if (!key) {
+    return { ...base, ok: false, elapsedMs: 0, error: "未填写 API Key" };
+  }
+  if (!cfg.model.trim()) {
+    return { ...base, ok: false, elapsedMs: 0, error: "未填写模型名（可点「获取模型列表」后选择）" };
+  }
+
+  const first = await attemptOnce(key, cfg.model, "anthropic");
+  if (first.ok) {
+    return {
+      ...base,
+      ok: true,
+      elapsedMs: Date.now() - started,
+      reply: first.reply,
+      usage: first.usage,
+    };
+  }
+
+  const second = await attemptOnce(key, cfg.model, "openai");
+  const elapsedMs = Date.now() - started;
+  if (second.ok) {
+    return {
+      ...base,
+      protocol: "openai",
+      ok: true,
+      elapsedMs,
+      reply: second.reply,
+      usage: second.usage,
+      note: `Anthropic 失败（${first.error ?? "未知错误"}），OpenAI 协议兜底成功`,
+    };
+  }
+  return {
+    ...base,
+    protocol: "openai",
+    ok: false,
+    // 任一端 429 都说明 key 认证通过（只是限额/频控），保留「限额中」语义。
+    limited: first.limited || second.limited,
+    elapsedMs,
+    error: `Anthropic: ${first.error ?? "失败"}｜OpenAI: ${second.error ?? "失败"}`,
+  };
 }
 
 /* ---- 模型列表（OpenAI 兼容 /v1/models；Anthropic 端点同构 data[].id） ---- */
@@ -266,33 +352,24 @@ export interface ModelsResult {
   error?: string;
 }
 
-/** 拉取模型列表：先按当前协议的端点请求，失败自动尝试另一个（key 可能受端点限制）。 */
-export async function fetchModels(
-  key: string,
-  protocol: Protocol
-): Promise<ModelsResult> {
+/** 拉取模型列表：Anthropic 端点优先，失败自动换 OpenAI 端点（key 可能受端点限制）。 */
+export async function fetchModels(key: string): Promise<ModelsResult> {
   const k = key.trim();
   if (!k) return { ok: false, models: [], error: "未填写 API Key，无法获取模型列表" };
 
   const tries: Array<{ url: string; label: string; anthropic: boolean }> = [
-    protocol === "anthropic"
-      ? { url: `${BASE_URLS.anthropic}/v1/models`, label: "Anthropic 端点", anthropic: true }
-      : { url: `${BASE_URLS.openai}/models`, label: "Coding Plan 端点", anthropic: false },
-    protocol === "anthropic"
-      ? { url: `${BASE_URLS.openai}/models`, label: "Coding Plan 端点", anthropic: false }
-      : { url: `${BASE_URLS.anthropic}/v1/models`, label: "Anthropic 端点", anthropic: true },
+    { url: `${BASE_URLS.anthropic}/v1/models`, label: "Anthropic 端点", anthropic: true },
+    { url: `${BASE_URLS.openai}/models`, label: "Coding Plan 端点", anthropic: false },
   ];
 
   let lastError = "未知错误";
   for (const t of tries) {
-    const { signal, cancel } = requestTimeout(20_000);
     try {
       const headers: Record<string, string> = { Authorization: `Bearer ${k}` };
       if (t.anthropic) headers["anthropic-version"] = "2023-06-01";
-      const res = await fetch(t.url, { headers, signal });
-      const text = await res.text();
-      if (!res.ok) {
-        lastError = extractApiError(res.status, text, res.statusText);
+      const { status, text } = await httpRequest(t.url, { headers, timeoutMs: 20_000 });
+      if (status < 200 || status >= 300) {
+        lastError = extractApiError(status, text, "");
         continue; // 换下一个端点试
       }
       const parsed = JSON.parse(text) as { data?: Array<{ id?: unknown }> };
@@ -307,10 +384,7 @@ export async function fetchModels(
       return { ok: true, models, source: t.label };
     } catch (e) {
       const err = e as { name?: string; message?: string };
-      lastError =
-        err?.name === "AbortError" ? "请求超时（20s）" : err?.message || String(e);
-    } finally {
-      cancel();
+      lastError = err?.message || String(e);
     }
   }
   return { ok: false, models: [], error: lastError };
@@ -321,10 +395,10 @@ export async function fetchModels(
 const LS_KEY = "toolbox-glm-key-test-config";
 
 export interface StoredConfig {
-  schemaVersion: 4;
+  /** v5：移除协议选择（固定 Anthropic 优先、OpenAI 兜底）。 */
+  schemaVersion: 5;
   /** key 列表（名称 + key 本体），至少保留一行。 */
   keys: KeyEntry[];
-  protocol: Protocol;
   model: string;
   /** 「获取模型列表」拉取的模型 id（空 = 未拉取过，回退内置预设）。 */
   models: string[];
@@ -336,9 +410,8 @@ export interface StoredConfig {
 }
 
 export const DEFAULT_CONFIG: StoredConfig = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   keys: [{ name: "key1", key: "" }],
-  protocol: "openai",
   model: DEFAULT_MODEL,
   models: [],
   scheduleEnabled: false,
@@ -385,10 +458,9 @@ export function loadConfig(): StoredConfig {
     const parsed = JSON.parse(raw) as Partial<StoredConfig> & {
       scheduleTime?: string;
       key?: string;
+      /** v4 遗留：协议选择已移除，读取时静默丢弃。 */
+      protocol?: Protocol;
     };
-    const protocol = PROTOCOLS.includes(parsed.protocol as Protocol)
-      ? (parsed.protocol as Protocol)
-      : DEFAULT_CONFIG.protocol;
     // v3（单个 scheduleTime）→ v4（scheduleTimes 列表）自动迁移。
     const rawTimes = Array.isArray(parsed.scheduleTimes)
       ? parsed.scheduleTimes
@@ -424,9 +496,8 @@ export function loadConfig(): StoredConfig {
       return k;
     });
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       keys,
-      protocol,
       model: typeof parsed.model === "string" ? parsed.model : DEFAULT_MODEL,
       models: Array.isArray(parsed.models)
         ? parsed.models.filter((m): m is string => typeof m === "string")
@@ -564,10 +635,7 @@ export async function runAllTests(
   const records: TestRecord[] = [];
   for (const entry of entries) {
     records.push(
-      await runTest(
-        { key: entry.key, keyName: entry.name, protocol: cfg.protocol, model: cfg.model },
-        trigger
-      )
+      await runTest({ key: entry.key, keyName: entry.name, model: cfg.model }, trigger)
     );
   }
   return records;

@@ -22,8 +22,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
-use std::time::Duration;
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -31,6 +29,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use super::types::{InstalledRecord, ManifestCore, RegistryDoc};
 use crate::error::{AppError, AppResult};
+use crate::httpx;
 
 const INSTALLED_FILE: &str = "installed.json";
 /// 包类型 → 安装子目录。
@@ -93,51 +92,10 @@ fn cache_root(app: &AppHandle) -> AppResult<PathBuf> {
 
 /* ---- http ---- */
 
-/// 两套 HTTP 客户端：优先走系统代理（部分网络必须代理才能访问 GitHub），
-/// 连接失败时回退直连（部分代理规则会拦截 CDN 域名）。
-fn http_clients() -> &'static (reqwest::blocking::Client, reqwest::blocking::Client) {
-    static CLIENTS: OnceLock<(reqwest::blocking::Client, reqwest::blocking::Client)> =
-        OnceLock::new();
-    CLIENTS.get_or_init(|| {
-        let make = |no_proxy: bool| {
-            let mut b = reqwest::blocking::Client::builder()
-                .user_agent(concat!("ToolBox/", env!("CARGO_PKG_VERSION")))
-                .timeout(Duration::from_secs(30))
-                .connect_timeout(Duration::from_secs(8));
-            if no_proxy {
-                b = b.no_proxy();
-            }
-            b.build().expect("failed to build http client")
-        };
-        (make(false), make(true))
-    })
-}
-
 /// 带回退的 GET：系统代理 → 直连。错误信息包含完整错误链。
+/// 客户端与回退逻辑见 `crate::httpx`（与 net_http_request 原语共用）。
 fn send_get(url: &str) -> AppResult<reqwest::blocking::Response> {
-    let (proxied, direct) = http_clients();
-    let mut errors: Vec<String> = Vec::new();
-    for (label, client) in [("系统代理", proxied), ("直连", direct)] {
-        match client.get(url).send() {
-            Ok(resp) => return Ok(resp),
-            Err(e) => errors.push(format!("{label}: {}", error_chain(&e))),
-        }
-    }
-    Err(AppError::Other(format!(
-        "网络请求失败（已尝试 {}）",
-        errors.join("；")
-    )))
-}
-
-/// 展开嵌套错误链，暴露根因（dns / tls / connect 等）。
-fn error_chain(e: &dyn std::error::Error) -> String {
-    let mut msg = e.to_string();
-    let mut cur = e.source();
-    while let Some(s) = cur {
-        msg.push_str(&format!(" ← {s}"));
-        cur = s.source();
-    }
-    msg
+    httpx::send_with_fallback(|c| c.get(url))
 }
 
 fn hex_lower(bytes: &[u8]) -> String {

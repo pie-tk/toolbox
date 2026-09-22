@@ -30,10 +30,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  PROTOCOLS,
-  PROTOCOL_LABELS,
   type KeyEntry,
-  type Protocol,
   fetchModels,
   getNextFireAt,
   getLastRound,
@@ -276,13 +273,15 @@ function buildGroups(records: TestRecord[]): ResultGroup[] {
   const map = new Map<string, ResultGroup>();
   for (const r of records) {
     const status: ResultGroup["status"] = r.ok ? "ok" : r.limited ? "limited" : "fail";
-    const key = r.ok ? "ok" : `${status}|${r.error ?? ""}`;
+    // ok 也按备注分组：直连可用 与 兜底可用 分行展示，过程一目了然。
+    const key = r.ok ? `ok|${r.note ?? ""}` : `${status}|${r.error ?? ""}`;
     let g = map.get(key);
     if (!g) {
       let message: string;
       if (r.ok) {
         const reply = (r.reply ?? "").replace(/\s+/g, " ").slice(0, 24);
         message = reply ? `可用 · 回复「${reply}」` : "可用";
+        if (r.note) message += `（${r.note}）`;
       } else {
         message = r.error ?? "失败";
       }
@@ -299,10 +298,10 @@ const GROUP_STYLE: Record<
   ResultGroup["status"],
   { icon: typeof CheckCircle2; text: string; label: string }
 > = {
-  ok: { icon: CheckCircle2, text: "text-emerald-500", label: "可用" },
+  ok: { icon: CheckCircle2, text: "text-success", label: "可用" },
   limited: {
     icon: Hourglass,
-    text: "text-amber-600 dark:text-amber-400",
+    text: "text-warning",
     label: "限额中",
   },
   fail: { icon: XCircle, text: "text-destructive", label: "失败" },
@@ -319,9 +318,9 @@ function RoundResultView({ records, testing }: { records: TestRecord[]; testing:
     <div className="space-y-2 rounded-md border border-border bg-background/50 px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <span className="text-muted-foreground">本轮 {records.length} 个 Key：</span>
-        {counts.ok > 0 && <span className="font-medium text-emerald-500">✓ {counts.ok} 可用</span>}
+        {counts.ok > 0 && <span className="font-medium text-success">✓ {counts.ok} 可用</span>}
         {counts.limited > 0 && (
-          <span className="font-medium text-amber-600 dark:text-amber-400">
+          <span className="font-medium text-warning">
             ⏳ {counts.limited} 限额
           </span>
         )}
@@ -415,7 +414,7 @@ function GlmKeyTestTool() {
           trigger,
           keyName: "",
           model: current.model,
-          protocol: current.protocol,
+          protocol: "anthropic",
         };
         setLastRound([record]);
         setLastRoundModule([record]);
@@ -428,7 +427,7 @@ function GlmKeyTestTool() {
         const records: TestRecord[] = [];
         for (const entry of entries) {
           const record = await runTest(
-            { key: entry.key, keyName: entry.name, protocol: current.protocol, model: current.model },
+            { key: entry.key, keyName: entry.name, model: current.model },
             trigger
           );
           records.push(record);
@@ -507,7 +506,7 @@ function GlmKeyTestTool() {
     }
     setFetchingModels(true);
     try {
-      const result = await fetchModels(first.key, current.protocol);
+      const result = await fetchModels(first.key);
       if (result.ok) {
         update({ models: result.models });
         setModelsHint({ kind: "ok", source: result.source ?? "" });
@@ -580,59 +579,44 @@ function GlmKeyTestTool() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs text-muted-foreground">协议</label>
-                <select
-                  value={cfg.protocol}
-                  onChange={(e) =>
-                    update({ protocol: e.target.value as Protocol })
-                  }
-                  className={inputClass}
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">模型</label>
+              <div className="flex gap-2">
+                <ModelSelect
+                  value={cfg.model}
+                  models={cfg.models}
+                  onChange={(model) => update({ model })}
+                />
+                <button
+                  className={`${primaryBtnClass} h-9 shrink-0 px-3 text-xs`}
+                  onClick={() => void fetchModelList()}
+                  disabled={fetchingModels}
+                  title="用第一个已填写的 Key 从智谱拉取可用模型列表"
                 >
-                  {PROTOCOLS.map((p) => (
-                    <option key={p} value={p}>
-                      {PROTOCOL_LABELS[p]}
-                    </option>
-                  ))}
-                </select>
+                  {fetchingModels ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <CloudDownload className="h-3.5 w-3.5" />
+                  )}
+                  {fetchingModels ? "获取中" : "获取模型列表"}
+                </button>
               </div>
-              <div>
-                <label className="mb-1 block text-xs text-muted-foreground">模型</label>
-                <div className="flex gap-2">
-                  <ModelSelect
-                    value={cfg.model}
-                    models={cfg.models}
-                    onChange={(model) => update({ model })}
-                  />
-                  <button
-                    className={`${primaryBtnClass} h-9 shrink-0 px-3 text-xs`}
-                    onClick={() => void fetchModelList()}
-                    disabled={fetchingModels}
-                    title="用第一个已填写的 Key 从智谱拉取可用模型列表"
-                  >
-                    {fetchingModels ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <CloudDownload className="h-3.5 w-3.5" />
-                    )}
-                    {fetchingModels ? "获取中" : "获取模型列表"}
-                  </button>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {modelsHint.kind === "ok" && (
-                    <span className="text-emerald-500">
-                      已获取 {cfg.models.length} 个模型（{modelsHint.source}），点击 ↓ 选择
-                    </span>
-                  )}
-                  {modelsHint.kind === "error" && (
-                    <span className="text-destructive">获取失败：{modelsHint.message}</span>
-                  )}
-                  {modelsHint.kind === "idle" &&
-                    (cfg.models.length > 0
-                      ? `已有 ${cfg.models.length} 个模型，点击 ↓ 选择`
-                      : "可点击右侧按钮拉取模型列表，或直接输入模型名")}
-                </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {modelsHint.kind === "ok" && (
+                  <span className="text-success">
+                    已获取 {cfg.models.length} 个模型（{modelsHint.source}），点击 ↓ 选择
+                  </span>
+                )}
+                {modelsHint.kind === "error" && (
+                  <span className="text-destructive">获取失败：{modelsHint.message}</span>
+                )}
+                {modelsHint.kind === "idle" &&
+                  (cfg.models.length > 0
+                    ? `已有 ${cfg.models.length} 个模型，点击 ↓ 选择`
+                    : "可点击右侧按钮拉取模型列表，或直接输入模型名")}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                测试策略：Anthropic 协议优先，失败自动以 OpenAI 协议兜底重试，合并为一条记录并备注过程。
               </div>
             </div>
 
@@ -809,9 +793,9 @@ function GlmKeyTestTool() {
                     className="flex items-center gap-2 rounded-md border border-border bg-background/50 px-3 py-2 text-xs"
                   >
                     {r.ok ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
                     ) : r.limited ? (
-                      <Hourglass className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                      <Hourglass className="h-3.5 w-3.5 shrink-0 text-warning" />
                     ) : (
                       <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
                     )}
@@ -829,12 +813,21 @@ function GlmKeyTestTool() {
                     <span
                       className={
                         r.limited && !r.ok
-                          ? "min-w-0 flex-1 truncate text-amber-600 dark:text-amber-400"
+                          ? "min-w-0 flex-1 truncate text-warning"
                           : "min-w-0 flex-1 truncate"
                       }
-                      title={r.ok ? r.reply : r.error}
+                      title={r.ok ? `${r.reply ?? ""}${r.note ? `\n${r.note}` : ""}` : r.error}
                     >
-                      {r.ok ? r.reply : r.error}
+                      {r.ok ? (
+                        <>
+                          {r.reply}
+                          {r.note && (
+                            <span className="text-muted-foreground"> · {r.note}</span>
+                          )}
+                        </>
+                      ) : (
+                        r.error
+                      )}
                     </span>
                     <span className="shrink-0 text-muted-foreground">{r.elapsedMs}ms</span>
                   </div>

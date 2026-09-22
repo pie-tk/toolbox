@@ -1,4 +1,5 @@
-//! 通用网络原语：为插件提供局域网通信能力（入站 WS/HTTP 服务器、UDP 收发、网卡枚举）。
+//! 通用网络原语：为插件提供局域网通信能力（入站 WS/HTTP 服务器、UDP 收发、网卡枚举）
+//! 与出站 HTTP 请求（net_http_request，供插件访问未开 CORS 的 API）。
 //! 宿主只做传输层转发，协议编解码与业务逻辑全部在插件（TS）侧完成。
 //! 信任模型与 fs/proc 原语一致：第一版插件均由 registry 发布方控制。
 //!
@@ -9,6 +10,7 @@
 //!   net-udp-message { id, from, dataB64 }        — base64（mDNS 等报文含非 UTF-8 字节）
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,6 +27,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::error::{AppError, AppResult};
+use crate::httpx;
 
 /// 请求头（含请求行）上限；超过直接断开。
 const MAX_HEAD: usize = 64 * 1024;
@@ -695,6 +698,106 @@ pub fn net_udp_stop(state: State<NetState>, id: String) -> AppResult<()> {
     Ok(())
 }
 
+/* ---- 出站 HTTP 原语 ---- */
+
+/// 响应体上限：本原语面向 JSON API（如智谱 Anthropic 兼容端点），不是文件下载通道。
+const MAX_HTTP_BODY: u64 = 8 * 1024 * 1024;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpOptions {
+    pub url: String,
+    /// 缺省 GET。仅允许 ASCII 字母（防止请求行注入）。
+    pub method: Option<String>,
+    pub headers: Option<HashMap<String, String>>,
+    /// 原始请求体（JSON 由插件自行序列化）。
+    pub body: Option<String>,
+    /// 缺省 30s，上限 120s（防插件传超大值长期占用连接）。
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpResult {
+    pub status: u16,
+    /// 响应头（名字小写；重复头以 ", " 连接）。
+    pub headers: HashMap<String, String>,
+    pub body: String,
+}
+
+/// 仅放行 http/https（显式排除 file: 等本地协议）。
+fn valid_http_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+/// 方法名校验：非空且全 ASCII 字母（reqwest Method 兜底之前先给出可读错误）。
+fn valid_http_method(m: &str) -> bool {
+    !m.is_empty() && m.chars().all(|c| c.is_ascii_alphabetic())
+}
+
+/// 同步实现（命令壳与测试共用）。
+fn http_request_impl(opts: HttpOptions) -> AppResult<HttpResult> {
+    let url = opts.url.trim();
+    if !valid_http_url(url) {
+        return Err(AppError::Invalid("仅支持 http/https URL".into()));
+    }
+    let method = opts
+        .method
+        .as_deref()
+        .unwrap_or("GET")
+        .trim()
+        .to_ascii_uppercase();
+    if !valid_http_method(&method) {
+        return Err(AppError::Invalid(format!("非法的 HTTP 方法: {method}")));
+    }
+    let method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|_| AppError::Invalid("非法的 HTTP 方法".into()))?;
+    let timeout = Duration::from_millis(opts.timeout_ms.unwrap_or(30_000).min(120_000));
+
+    let resp = httpx::send_with_fallback(|c| {
+        let mut req = c.request(method.clone(), url).timeout(timeout);
+        if let Some(headers) = &opts.headers {
+            for (k, v) in headers {
+                req = req.header(k, v);
+            }
+        }
+        if let Some(body) = &opts.body {
+            req = req.body(body.clone());
+        }
+        req
+    })?;
+
+    let status = resp.status().as_u16();
+    let mut headers: HashMap<String, String> = HashMap::new();
+    for (name, value) in resp.headers() {
+        // 非法值头（罕见）跳过，不让整个请求失败。
+        if let Ok(v) = value.to_str() {
+            headers
+                .entry(name.as_str().to_string())
+                .and_modify(|joined| *joined = format!("{joined}, {v}"))
+                .or_insert_with(|| v.to_string());
+        }
+    }
+    let mut body = Vec::new();
+    resp.take(MAX_HTTP_BODY + 1)
+        .read_to_end(&mut body)
+        .map_err(|e| AppError::Other(format!("读取响应体失败: {e}")))?;
+    if body.len() as u64 > MAX_HTTP_BODY {
+        return Err(AppError::Other("响应体超过 8MB 上限".into()));
+    }
+    Ok(HttpResult { status, headers, body: String::from_utf8_lossy(&body).into_owned() })
+}
+
+/// 出站 HTTP 请求：插件访问无 CORS 的 API（如智谱 Anthropic 兼容端点——其预检
+/// 不带任何 CORS 头，WebView 直连必被拦）。系统代理 → 直连自动回退；
+/// 请求/响应体均为文本。阻塞 IO 走 spawn_blocking。
+#[tauri::command]
+pub async fn net_http_request(opts: HttpOptions) -> AppResult<HttpResult> {
+    tauri::async_runtime::spawn_blocking(move || http_request_impl(opts))
+        .await
+        .map_err(|e| AppError::Other(format!("HTTP 请求任务失败: {e}")))?
+}
+
 /// 枚举本机网卡（环境配置区的网卡选择）。
 #[tauri::command]
 pub fn net_local_ips() -> AppResult<Vec<NetIf>> {
@@ -752,5 +855,48 @@ mod tests {
     fn multi_value_headers_joined() {
         let head = parse_head(b"GET /x HTTP/1.1\r\nX-A: 1\r\nX-A: 2\r\n\r\n").unwrap();
         assert_eq!(head.headers.get("x-a").map(String::as_str), Some("1, 2"));
+    }
+
+    #[test]
+    fn http_url_validation() {
+        assert!(valid_http_url("https://open.bigmodel.cn/api/anthropic"));
+        assert!(valid_http_url("http://127.0.0.1:8089/x"));
+        assert!(!valid_http_url("file:///etc/passwd"));
+        assert!(!valid_http_url("ftp://example.com"));
+        assert!(!valid_http_url(""));
+    }
+
+    #[test]
+    fn http_method_validation() {
+        assert!(valid_http_method("GET"));
+        assert!(valid_http_method("post"));
+        for bad in ["", "GET /x", "POST\r\nX: 1", "跨域"] {
+            let m = bad.trim().to_ascii_uppercase();
+            assert!(!valid_http_method(&m), "应拒绝非法方法: {bad:?}");
+        }
+    }
+
+    /// 真实网络冒烟：宿主原语直连智谱 Anthropic 端点（该端点无 CORS，WebView
+    /// 直连必被拦——这正是本原语的存在理由），无效 key 应得 401 JSON。
+    #[test]
+    #[ignore = "真实网络，手动跑"]
+    fn net_http_request_smoke() {
+        let result = http_request_impl(HttpOptions {
+            url: "https://open.bigmodel.cn/api/anthropic/v1/messages".into(),
+            method: Some("POST".into()),
+            headers: Some(HashMap::from([
+                ("Content-Type".into(), "application/json".into()),
+                ("Authorization".into(), "Bearer sk-smoke-invalid".into()),
+                ("anthropic-version".into(), "2023-06-01".into()),
+            ])),
+            body: Some(
+                r#"{"model":"glm-4.7","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}"#
+                    .into(),
+            ),
+            timeout_ms: Some(30_000),
+        })
+        .expect("http_request_impl");
+        assert_eq!(result.status, 401);
+        assert!(result.body.contains("令牌"), "响应体: {}", result.body);
     }
 }

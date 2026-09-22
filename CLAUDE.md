@@ -7,7 +7,9 @@
 
 1. **宿主永不膨胀**。图像处理等重能力一律做成共享能力（wasm），不进宿主 Rust。
    宿主只保留：窗口/导航、插件分发（下载/校验/安装）、极薄文件原语、屏幕采样原语
-   （`commands/screen.rs`：取色用，Windows GDI / macOS CoreGraphics+NSCursor）、更新器。
+   （`commands/screen.rs`：取色用，Windows GDI / macOS CoreGraphics+NSCursor）、
+   出站 HTTP 原语（`commands/net.rs` `net_http_request`：插件访问无 CORS 的 API，
+   如智谱 Anthropic 端点；系统代理→直连回退，与 `httpx.rs` 共用）、更新器。
    当前宿主 exe ≈13MB；`image`/`rayon`/`lru` 等曾被刻意移出，勿再引入。
 2. **工具与能力是外部插件**，源码在仓库内、分发走远程 registry：
    - 工具：`plugins/<id>/manifest.json + src/main.tsx`（esbuild 打包自包含 ESM，导出

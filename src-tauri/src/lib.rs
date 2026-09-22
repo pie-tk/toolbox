@@ -4,6 +4,7 @@
 
 mod commands;
 mod error;
+mod httpx;
 mod plugin;
 
 use tauri::menu::{Menu, MenuItem};
@@ -87,6 +88,7 @@ pub fn run() {
             commands::net::net_udp_start,
             commands::net::net_udp_send,
             commands::net::net_udp_stop,
+            commands::net::net_http_request,
             commands::net::net_local_ips,
             commands::screen::screen_sample,
             commands::screen::screen_cursor_set,
