@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "password-vault",
+  "name": "密码保险库",
+  "version": "1.0.0",
+  "description": "本地加密密码管理：凭据增删改查、防重复提示、一键复制（自动清剪贴板）、密码生成器、Chrome/Edge CSV 导入、加密备份恢复、闲置自动锁定",
+  "category": "other",
+  "keywords": ["password", "vault", "密码", "密码管理", "凭据", "加密", "导入", "备份", "生成"],
+  "icon": "key",
+  "layout": "fullscreen",
+  "entry": "module.js",
+  "style": "style.css",
+  "minAppVersion": "0.1.0"
+}
