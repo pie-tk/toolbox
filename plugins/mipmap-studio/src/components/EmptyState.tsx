@@ -3,7 +3,7 @@ import { FolderOpen, Layers } from "lucide-react";
 export function EmptyState() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center text-muted-foreground">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-lg">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-border/60">
         <Layers className="h-9 w-9" />
       </div>
       <div>

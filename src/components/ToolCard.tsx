@@ -15,7 +15,7 @@ export function ToolCard({ meta }: { meta: ToolMeta }) {
       onClick={() => openTool(meta.id)}
       disabled={unmet.length > 0}
       title={unmet.length > 0 ? "依赖能力未就绪，可到工具市场修复" : undefined}
-      className="group flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-card"
+      className="group flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-[border-color,background-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent/40 active:translate-y-0 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:border-border disabled:hover:bg-card"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
         <Icon className="h-5 w-5" />

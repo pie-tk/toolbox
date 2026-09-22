@@ -101,7 +101,7 @@ function ToolWorkspace({ toolId }: { toolId: string }) {
           <meta.icon className="h-6 w-6" />
         </div>
         <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-xl font-semibold leading-tight">
+          <h1 className="flex items-center gap-2 text-xl font-semibold leading-tight tracking-tight">
             {meta.name}
             <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
               v{meta.version}

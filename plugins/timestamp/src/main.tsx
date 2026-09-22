@@ -51,7 +51,7 @@ function CopyButton({ text }: { text: string }) {
       title="复制"
       className={
         copied
-          ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-emerald-400 transition-colors hover:bg-accent"
+          ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-success transition-colors hover:bg-accent"
           : "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       }
     >
@@ -84,7 +84,7 @@ const inputClass =
   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 const smallBtnClass =
-  "inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 select-none";
+  "inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.98] hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100 select-none";
 
 /* ---- 工具 UI ---- */
 

@@ -7,7 +7,6 @@ import {
   Download,
   Loader2,
   RefreshCw,
-  Search,
   SearchX,
   Store,
   Trash2,
@@ -15,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
+import { SearchInput } from "@/components/SearchInput";
 import { cn, formatBytes, fuzzyMatch } from "@/lib/utils";
 import { getAppInfo } from "@/lib/tauri";
 import {
@@ -186,23 +186,20 @@ export function MarketplacePage() {
     <div className="mx-auto max-w-5xl animate-fade-in space-y-6 p-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">工具市场</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">工具市场</h1>
           {isCacheStale && loadedAt && !fetching && (
-            <p className="mt-1 text-xs text-muted-foreground/60">
+            <p className="mt-1 text-xs tabular-nums text-muted-foreground/60">
               更新于 {new Date(loadedAt).toLocaleTimeString()}，进入页面时自动刷新
             </p>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex h-9 w-64 items-center gap-2 rounded-md border border-input bg-background px-3 shadow-sm transition-colors focus-within:ring-1 focus-within:ring-ring">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索工具名称、关键词…"
-              className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="搜索工具名称、关键词…"
+            className="w-64"
+          />
           <Button variant="outline" size="sm" onClick={() => fetchMarket(registryUrl)} disabled={fetching}>
             {fetching ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -298,7 +295,7 @@ export function MarketplacePage() {
                 {progress && progress.stage === "download" && progress.total > 0 && (
                   <div className="h-1 overflow-hidden rounded-full bg-muted">
                     <div
-                      className="h-full rounded-full bg-primary transition-[width]"
+                      className="h-full rounded-full bg-primary transition-[width] duration-300"
                       style={{
                         width: `${Math.min(100, (progress.received / progress.total) * 100)}%`,
                       }}
@@ -308,18 +305,18 @@ export function MarketplacePage() {
 
                 <div className="mt-auto flex items-center justify-between border-t pt-3">
                   {progress ? (
-                    <span className="flex items-center gap-2 text-xs text-primary">
+                    <span className="flex items-center gap-2 text-xs tabular-nums text-primary">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       {progressLabel(progress)}
                       {downloadingCaps.length > 0 && "（含共享能力）"}
                     </span>
                   ) : status === "installed" ? (
-                    <span className="flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-400">
+                    <span className="flex items-center gap-1 rounded bg-success/15 px-2 py-0.5 text-xs text-success">
                       <Check className="h-3 w-3" />
                       已安装
                     </span>
                   ) : status === "updatable" ? (
-                    <span className="rounded bg-amber-500/15 px-2 py-0.5 text-xs text-amber-400">
+                    <span className="rounded bg-warning/15 px-2 py-0.5 text-xs text-warning">
                       可更新
                     </span>
                   ) : (
@@ -357,7 +354,7 @@ export function MarketplacePage() {
                       onClick={() => handleInstall(tool)}
                       className={cn(
                         status === "updatable" &&
-                          "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25"
+                          "bg-warning/15 text-warning hover:bg-warning/25"
                       )}
                     >
                       {status === "updatable" ? (

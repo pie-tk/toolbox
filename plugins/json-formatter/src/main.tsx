@@ -171,7 +171,7 @@ function JsonFormatter() {
           </div>
         )}
         {validation.state === "valid" && (
-          <div className="text-xs text-emerald-400">✓ JSON 有效</div>
+          <div className="text-xs text-success">✓ JSON 有效</div>
         )}
 
         <textarea
@@ -198,7 +198,7 @@ function JsonFormatter() {
             {wrap ? "自动换行：开" : "自动换行：关"}
           </button>
           <button className={cls.btn} onClick={handleCopy} disabled={!output}>
-            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "已复制" : "复制"}
           </button>
         </div>

@@ -125,7 +125,7 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl animate-fade-in space-y-4 p-8">
-      <h1 className="text-2xl font-semibold">设置</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">设置</h1>
 
       <Section
         title="外观"
@@ -415,7 +415,7 @@ export function SettingsPage() {
                     }}
                   />
                 </div>
-                <div className="text-right text-[10px] text-muted-foreground">
+                <div className="text-right font-mono text-[10px] text-muted-foreground">
                   {formatBytes(progress.downloaded)} / {formatBytes(progress.total)}
                 </div>
               </div>

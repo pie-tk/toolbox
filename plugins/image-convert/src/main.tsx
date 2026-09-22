@@ -61,7 +61,7 @@ interface Item {
 }
 
 const btn =
-  "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 select-none";
+  "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium transition-[color,background-color,border-color,transform] duration-200 active:scale-[0.98] hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100 select-none";
 const primaryBtn = btn.replace(
   "border border-input bg-background",
   "bg-primary text-primary-foreground hover:bg-primary/90"

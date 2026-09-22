@@ -142,7 +142,7 @@ function SidebarItem({
       disabled={disabled}
       title={title}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
+        "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-[color,background-color,transform] duration-150 active:scale-[0.98]",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",

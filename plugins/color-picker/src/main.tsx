@@ -85,7 +85,7 @@ function CopyButton({ text }: { text: string }) {
       title="复制"
       className={
         copied
-          ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-emerald-400 transition-colors hover:bg-accent"
+          ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-success transition-colors hover:bg-accent"
           : "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       }
     >
@@ -386,7 +386,7 @@ function ColorPickerTool() {
                   return nv;
                 })
               }
-              className={`${smallBtnClass} ${autoCopy ? "text-emerald-400" : "text-muted-foreground"}`}
+              className={`${smallBtnClass} ${autoCopy ? "text-success" : "text-muted-foreground"}`}
               title="取色确认后自动把 HEX 复制到剪贴板"
             >
               {autoCopy ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}

@@ -1,6 +1,7 @@
-import { Search, Store } from "lucide-react";
+import { Store } from "lucide-react";
 import { ToolCard } from "@/components/ToolCard";
 import { EmptyState } from "@/components/EmptyState";
+import { SearchInput } from "@/components/SearchInput";
 import { Button } from "@/components/ui/button";
 import { fuzzyMatch } from "@/lib/utils";
 import { useAppStore } from "@/store/useAppStore";
@@ -25,16 +26,13 @@ export function HomePage() {
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-8 p-8">
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">工具箱</h1>
-        <div className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-background px-3 shadow-sm transition-colors focus-within:ring-1 focus-within:ring-ring">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索工具名称、关键词…"
-            className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          />
-        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">工具箱</h1>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="搜索工具名称、关键词…"
+          className="w-full"
+        />
       </div>
 
       {metas.length === 0 ? (
